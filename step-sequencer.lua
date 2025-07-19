@@ -708,6 +708,25 @@ local function show_sequencer_dialog()
          clear_pattern_and_sequencer()
        end
      },
+     vb:dropdown{
+      text = "Mode",
+      items = {
+        "Write",
+        "Note",
+      },
+      notifier = function(index)
+        if index == 1 then
+          clear_pattern_and_sequencer()
+        elseif index == 2 then
+          clear_pattern_and_sequencer()
+          add_row()
+        elseif index == 3 then
+          clear_pattern_and_sequencer()
+          add_row()
+          play()
+        end
+      end
+    },
   }
 
   dialog_content = vb:column{
