@@ -244,7 +244,7 @@ end
 
 -- Sequencer settings
 num_steps = 16 --patternLength
-num_rows = 1
+num_rows = 4
 current_step = 1
 is_playing = false
 
@@ -253,16 +253,6 @@ step_grid_view = nil
 sequencer_data = {}
 step_indicators = {}
 step_indicators_row = nil
-dialog = nil  -- Main dialog window
-
--- Forward declarations (defined later)
-local show_sequencer_dialog
-update_step_note_in_pattern = nil  -- Will be defined later
-get_track_index_for_row = nil  -- Will be defined later
-rebuild_track_mapping = nil  -- Will be defined later
-
--- Track mapping: Maps sequencer row index to actual Renoise track index
-track_mapping = {}  -- track_mapping[row_index] = actual_track_index
 
 -- Track visibility data
 track_visibility = {}  -- Stores show/hide state for note and volume rows per track
@@ -272,7 +262,7 @@ track_volume_rows = {} -- References to volume row views for each track
 -- Toggle functions for row visibility
 local function toggle_note_row_visibility(row_index)
   if not track_visibility[row_index] then
-    track_visibility[row_index] = {note_visible = false, volume_visible = false}
+    track_visibility[row_index] = {note_visible = true, volume_visible = true}
   end
   
   local is_visible = track_visibility[row_index].note_visible
@@ -293,7 +283,7 @@ end
 
 local function toggle_volume_row_visibility(row_index)
   if not track_visibility[row_index] then
-    track_visibility[row_index] = {note_visible = false, volume_visible = false}
+    track_visibility[row_index] = {note_visible = true, volume_visible = true}
   end
   
   local is_visible = track_visibility[row_index].volume_visible
@@ -330,49 +320,6 @@ local function toggle_chord_track(row_index)
     vb.views[popup_id].active = not is_chord
   end
   
-  -- Update track note columns based on chord state
-  local song = renoise.song()
-  local track_index = get_track_index_for_row(row_index)  -- Get actual track index
-  
-  if track_index <= #song.tracks then
-    local track = song.tracks[track_index]
-    if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
-      if not is_chord then
-        -- Chord mode enabled - expand columns based on current chord type
-        local chord_type = sequencer_data[row_index].chord_type or "None"
-        local chord_intervals = CHORD_TYPES[chord_type]
-        if chord_intervals and #chord_intervals > 0 then
-          local num_notes = #chord_intervals
-          track.visible_note_columns = math.max(1, math.min(12, num_notes))
-          print("Expanded track " .. track_index .. " to " .. num_notes .. " note columns for chord mode")
-        else
-          track.visible_note_columns = 1
-        end
-        
-        -- Update all active steps to show chord notes
-        for s = 1, num_steps do
-          if sequencer_data[row_index].steps[s] then
-            local note_to_use = sequencer_data[row_index].step_notes and sequencer_data[row_index].step_notes[s] or sequencer_data[row_index].note_value
-            update_step_note_in_pattern(row_index, s, note_to_use)
-          end
-        end
-        print("Updated all active steps to chord notes")
-      else
-        -- Chord mode disabled - return to single column
-        track.visible_note_columns = 1
-        
-        -- Update all active steps to single notes
-        for s = 1, num_steps do
-          if sequencer_data[row_index].steps[s] then
-            local note_to_use = sequencer_data[row_index].step_notes and sequencer_data[row_index].step_notes[s] or sequencer_data[row_index].note_value
-            update_step_note_in_pattern(row_index, s, note_to_use)
-          end
-        end
-        print("Collapsed track " .. track_index .. " to 1 note column")
-      end
-    end
-  end
-  
   print("Chord track " .. row_index .. " enabled: " .. tostring(not is_chord))
 end
 
@@ -381,145 +328,14 @@ local INACTIVE_COLOR = {80, 80, 80}
 local ACTIVE_COLOR = {255, 255, 0}  -- Yellow for active step
 local BLOCK_START_COLOR = {99, 99, 99}  -- Light gray for block start
 
--- Function to clear a sequencer row (remove notes from pattern and reset sequencer data)
-local function remove_sequencer_row(row_index)
-  if not sequencer_data[row_index] then
-    print("ERROR: Row " .. row_index .. " doesn't exist")
-    return
-  end
-  
-  local song = renoise.song()
-  local track_index = get_track_index_for_row(row_index)
-  
-  -- Clear all notes from the pattern for this row
-  local current_pattern_index = song.selected_pattern_index
-  local pattern = song:pattern(current_pattern_index)
-  
-  if track_index and track_index <= #song.tracks then
-    local pattern_track = pattern:track(track_index)
-    
-    -- Clear all lines in this track
-    for line_index = 1, pattern.number_of_lines do
-      local line = pattern_track:line(line_index)
-      line:clear()  -- Clear notes, effects, everything
-    end
-    
-    print("Cleared all pattern notes for row " .. row_index .. " (track " .. track_index .. ")")
-  end
-  
-  -- Reset the sequencer data for this row
-  sequencer_data[row_index].steps = {}
-  sequencer_data[row_index].step_notes = {}
-  sequencer_data[row_index].step_volumes = {}
-  for s = 1, num_steps do
-    sequencer_data[row_index].steps[s] = false
-  end
-  
-  -- Clear all checkboxes in the UI
-  for s = 1, num_steps do
-    local checkbox_id = "checkbox_" .. tostring(row_index) .. "_" .. tostring(s)
-    if vb.views[checkbox_id] then
-      vb.views[checkbox_id].value = false
-    end
-  end
-  
-  print("Cleared row " .. row_index .. " (pattern and steps reset)")
-end
-
--- Helper function to find the last sequencer track index (before send/master tracks)
-local function find_last_sequencer_track_index()
-  local song = renoise.song()
-  local last_sequencer_index = 0
-  
-  -- First, check if there are any existing "Sequencer_" tracks
-  local has_seq_tracks = false
-  for i = 1, #song.tracks do
-    local track = song.tracks[i]
-    if track.name:match("^Sequencer_") then
-      has_seq_tracks = true
-      last_sequencer_index = i
-    elseif track.type == renoise.Track.TRACK_TYPE_SEQUENCER or 
-           track.type == renoise.Track.TRACK_TYPE_GROUP then
-      -- Track other sequencer/group tracks only if we haven't found Sequencer tracks yet
-      if not has_seq_tracks then
-        last_sequencer_index = i
-      end
-    end
-  end
-  
-  -- If no sequencer tracks found, use the currently selected track index
-  if last_sequencer_index == 0 then
-    last_sequencer_index = song.selected_track_index
-  end
-  
-  return last_sequencer_index
-end
-
--- Helper function to get the actual track index for a sequencer row
-get_track_index_for_row = function(row_index)
-  return track_mapping[row_index] or row_index
-end
-
--- Helper function to rebuild the track mapping
-rebuild_track_mapping = function()
-  local song = renoise.song()
-  track_mapping = {}
-  
-  local seq_track_count = 0
-  for i = 1, #song.tracks do
-    local track = song.tracks[i]
-    if track.name:match("^Sequencer_") then
-      seq_track_count = seq_track_count + 1
-      track_mapping[seq_track_count] = i
-      print("Mapped row " .. seq_track_count .. " to track " .. i .. " (" .. track.name .. ")")
-    end
-  end
-  
-  -- Clean up orphaned tracks (more sequencer tracks than data rows)
-  if seq_track_count > #sequencer_data then
-    print("WARNING: Found " .. seq_track_count .. " sequencer tracks but only " .. #sequencer_data .. " data rows")
-    -- Delete orphaned tracks (from the end backwards to avoid index shifting)
-    for i = #song.tracks, 1, -1 do
-      local track = song.tracks[i]
-      if track.name:match("^Sequencer_") then
-        -- Check if this track has a corresponding data row
-        local has_data = false
-        for row_idx = 1, #sequencer_data do
-          if track_mapping[row_idx] == i then
-            has_data = true
-            break
-          end
-        end
-        
-        if not has_data and track.type ~= renoise.Track.TRACK_TYPE_MASTER and track.type ~= renoise.Track.TRACK_TYPE_SEND then
-          print("Deleting orphaned track " .. i .. ": " .. track.name)
-          song:delete_track_at(i)
-        end
-      end
-    end
-    
-    -- Rebuild mapping after cleanup
-    track_mapping = {}
-    seq_track_count = 0
-    for i = 1, #song.tracks do
-      local track = song.tracks[i]
-      if track.name:match("^Sequencer_") then
-        seq_track_count = seq_track_count + 1
-        track_mapping[seq_track_count] = i
-        print("Re-mapped row " .. seq_track_count .. " to track " .. i .. " (" .. track.name .. ")")
-      end
-    end
-  end
-end
-
--- Create default sequencer tracks (without group)
+-- NEW FUNCTION: Create default track group and add sequencer tracks
 local function setup_default_track_group()
   local song = renoise.song()
   
   -- Check if sequencer tracks already exist
   local has_sequencer_tracks = false
   for i = 1, #song.tracks do
-    if song.tracks[i].name:match("^Sequencer_") then
+    if song.tracks[i].name:match("^Seq %d+$") then
       has_sequencer_tracks = true
       break
     end
@@ -530,53 +346,20 @@ local function setup_default_track_group()
     return
   end
   
-  -- Find the insertion point
-  -- Always insert after existing tracks (before send/master)
-  local last_seq_index = find_last_sequencer_track_index()
-  local insert_position
-  
-  if last_seq_index == 0 then
-    -- No sequencer tracks exist yet - find the first non-sequencer track position
-    -- Or just add at the end of existing tracks
-    insert_position = #song.tracks + 1
-  else
-    -- Insert after the last sequencer track
-    insert_position = last_seq_index + 1
+  -- Create new group at position 1
+  local new_group = song:insert_group_at(1)
+
+  -- Set group name
+  if new_group then
+    new_group.name = "Sequencer"
   end
   
-  -- Add sequencer tracks at the correct position
+  -- Add sequencer tracks - they will automatically be added to the group when inserted after it
   for i = 1, num_rows do
-    -- Insert the track
-    if insert_position > #song.tracks then
-      -- Add at end
-      song:insert_track_at(insert_position)
-    else
-      -- Insert before send/master tracks
-      song:insert_track_at(insert_position)
-    end
-    
-    -- Get instrument name for this row
-    local instrument_name = "Unknown"
-    if sequencer_data[i] and sequencer_data[i].instrument then
-      local instrument = song.instruments[sequencer_data[i].instrument]
-      if instrument then
-        instrument_name = instrument.name
-      end
-    end
-    
-    song.tracks[insert_position].name = "Sequencer_" .. instrument_name
-    track_mapping[i] = insert_position
-    print("Created track " .. insert_position .. ": " .. song.tracks[insert_position].name)
-    insert_position = insert_position + 1
-  end
-  
-  -- Rebuild mapping to ensure it's correct
-  rebuild_track_mapping()
-  
-  -- Set the selected track to the first sequencer track
-  if #track_mapping > 0 and track_mapping[1] then
-    song.selected_track_index = track_mapping[1]
-    print("Set selected track to " .. track_mapping[1])
+    local track_index = i + 1  -- Track indices: 2, 3, 4, 5...
+    song:insert_track_at(track_index)  -- Insert after group
+    song.tracks[track_index].name = "Seq " .. i
+    print("Created track " .. track_index .. ": " .. song.tracks[track_index].name)
   end
 end
 
@@ -666,15 +449,74 @@ local function create_step_indicators(steps)
 
   
   local row = vb:horizontal_aligner{}
+    local trackDelayLabel = vb:text{
+      width = cellSize,
+      text = "TD"
+      
+  }
+  local noteLabel = vb:text{
+    width = cellSize,
+    text = "TN"
+  }
+  local noteDelayLabel = vb:text{
+    width = cellSize,
+    text = "ND"
+  }
   
-  -- Add labels aligned with controls (new order)
-  row:add_child(vb:text{width = cellSizeLg, text = "Instrument", align = "center"})
-  row:add_child(vb:text{width = cellSize, text = "C", align = "center"})
-  row:add_child(vb:text{width = cellSizeLg, text = "Chord", align = "center"})
-  row:add_child(vb:text{width = cellSize, text = "TN", align = "center"})
-  row:add_child(vb:text{width = cellSize, text = "TD", align = "center"})
-  row:add_child(vb:text{width = cellSize, text = "N", align = "center"})
-  row:add_child(vb:text{width = cellSize, text = "V", align = "center"})
+  local instrumentLabel = vb:text{
+      width = cellSizeLg,
+      text = "I"
+  }
+  
+  local saveLabel = vb:text{
+      width = cellSize,
+      text = "?"
+  }
+  
+  local noteToggleLabel = vb:text{
+      width = cellSize,
+      text = "N"
+  }
+  
+  local volumeToggleLabel = vb:text{
+      width = cellSize,
+      text = "V"
+  }
+  
+  local chordToggleLabel = vb:text{
+      width = cellSize,
+      text = "C"
+  }
+  
+  local chordSelectLabel = vb:text{
+      width = cellSizeLg,
+      text = "Chord"
+  }
+  
+  local previewLabel = vb:text{
+      width = cellSize,
+      text = "►"
+  }
+  
+  
+
+--        update_step_count(num_steps)
+--        local new_indicators_row = create_step_indicators(num_steps)
+--        dialog_content:remove_child(step_indicators_row)
+--        dialog_content:add_child(new_indicators_row)  -- Insert at index 2 (after the controls row)
+--        step_indicators_row = new_indicators_row
+ 
+ 
+   row:add_child(trackDelayLabel)
+   row:add_child(noteLabel)
+   row:add_child(noteDelayLabel)
+  row:add_child(instrumentLabel)
+  row:add_child(saveLabel)
+  row:add_child(previewLabel)
+  row:add_child(noteToggleLabel)
+  row:add_child(volumeToggleLabel)
+  row:add_child(chordToggleLabel)
+  row:add_child(chordSelectLabel)
  -- step_indicators = {}  -- Clear existing indicators
   for step = 1, steps do
     local indicator = vb:button{
@@ -769,14 +611,16 @@ local function update_step_volume_in_pattern(row_index, step, volume_value)
   local data = sequencer_data[row_index]
   if data and data.instrument then
     local instrument_index = data.instrument - 1  -- Zero-based index for pattern
-    local track_index = get_track_index_for_row(row_index)  -- Get actual track index
+    local track_index = row_index
 
     -- Get the current pattern
     local song = renoise.song()
     local current_pattern_index = song.selected_pattern_index
 
-    -- Calculate the line index based on the step and loop every num_steps lines
-    for line_index = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+    -- Calculate the line index based on the step and loop every num_steps ticks
+    for tick = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+      local line_index = (tick - 1) % song.patterns[current_pattern_index].number_of_lines + 1
+
       -- Access the note column in the specified track and line
       local pattern_track = song:pattern(current_pattern_index):track(track_index)
       local line = pattern_track:line(line_index)
@@ -785,7 +629,7 @@ local function update_step_volume_in_pattern(row_index, step, volume_value)
       -- Update volume only if there's already a note
       if note_column.note_value ~= 121 then  -- 121 = empty note
         note_column.volume_value = volume_value
-        print("Updated volume to " .. volume_value .. " for step " .. step .. " in track " .. track_index .. " at line " .. line_index)
+        print("Updated volume to " .. volume_value .. " for step " .. step .. " in track " .. track_index .. " at tick " .. tick)
       end
     end
   else
@@ -793,35 +637,8 @@ local function update_step_volume_in_pattern(row_index, step, volume_value)
   end
 end
 
--- Helper function to clear all notes for a specific step across the entire pattern
-local function clear_step_from_pattern(row_index, step)
-  local track_index = get_track_index_for_row(row_index)  -- Get actual track index
-  local song = renoise.song()
-  local current_pattern_index = song.selected_pattern_index
-  local pattern = song:pattern(current_pattern_index)
-  
-  -- Clear all occurrences of this step in the pattern
-  for line_index = step, pattern.number_of_lines, num_steps do
-    local pattern_track = pattern:track(track_index)
-    local line = pattern_track:line(line_index)
-    
-    -- Clear all note columns
-    for i = 1, 12 do
-      local note_column = line:note_column(i)
-      if note_column then
-        note_column.note_value = 121  -- Empty note
-        note_column.instrument_value = 255
-        note_column.volume_value = 255
-        note_column.delay_value = 0
-        note_column.panning_value = 255
-      end
-    end
-  end
-  print("Cleared all pattern notes for row " .. row_index .. " step " .. step)
-end
-
 -- Function to update a specific step with a specific note value or chord
-update_step_note_in_pattern = function(row_index, step, note_value)
+local function update_step_note_in_pattern(row_index, step, note_value)
   print("update_step_note_in_pattern called: row=" .. row_index .. ", step=" .. step .. ", note=" .. (note_value or "nil"))
   
   local data = sequencer_data[row_index]
@@ -832,7 +649,7 @@ update_step_note_in_pattern = function(row_index, step, note_value)
   
   if data.instrument then
     local instrument_index = data.instrument - 1  -- Zero-based index for pattern
-    local track_index = get_track_index_for_row(row_index)  -- Get actual track index
+    local track_index = row_index + 1  -- Skip the group track at index 1
 
     -- Get the current pattern
     local song = renoise.song()
@@ -858,14 +675,23 @@ update_step_note_in_pattern = function(row_index, step, note_value)
       return
     end
 
-    -- FIRST: Clear all existing notes for this step across the entire pattern
-    clear_step_from_pattern(row_index, step)
-    
-    -- THEN: Add new notes at the correct intervals
-    for line_index = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+    -- Calculate the line index based on the step and loop every 16 ticks
+    for tick = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+      local line_index = (tick - 1) % song.patterns[current_pattern_index].number_of_lines + 1
+
       -- Access the note column in the specified track and line
       local pattern_track = song:pattern(current_pattern_index):track(track_index)
       local line = pattern_track:line(line_index)
+      
+      -- Clear existing notes first
+      for i = 1, 12 do  -- Clear up to 12 note columns
+        local note_column = line:note_column(i)
+        if note_column then
+          note_column.note_value = 121  -- Empty note
+          note_column.instrument_value = 255
+          note_column.volume_value = 255
+        end
+      end
       
       -- Generate notes (single note or chord)
       local notes_to_add = {}
@@ -883,14 +709,12 @@ update_step_note_in_pattern = function(row_index, step, note_value)
             note_column.note_value = note
             note_column.instrument_value = instrument_index
             note_column.volume_value = 128 -- Max volume (0-128 scale)
-            note_column.delay_value = 0 -- Ensure no note delay
-            note_column.panning_value = 255 -- No panning change
           end
         end
       end
       
       local chord_info = data.is_chord_track and " (" .. data.chord_type .. " chord)" or ""
-      print("Added notes " .. table.concat(notes_to_add, ", ") .. chord_info .. " on instrument " .. (instrument_index + 1) .. " in track " .. track_index .. " at line " .. line_index)
+      print("Added notes " .. table.concat(notes_to_add, ", ") .. chord_info .. " on instrument " .. (instrument_index + 1) .. " in track " .. track_index .. " at tick " .. tick)
     end
   else
     print("ERROR: No instrument set for row " .. row_index)
@@ -902,41 +726,34 @@ local function update_note_in_pattern(row_index, step, add_note)
   local data = sequencer_data[row_index]
   if data and data.instrument then
     local instrument_index = data.instrument - 1  -- Zero-based index for pattern
-    local track_index = get_track_index_for_row(row_index)  -- Get actual track index
+    local track_index = row_index
     local note_value = data.note_value or 48 -- Use dynamic note value or default to C3
 
     -- Get the current pattern
     local song = renoise.song()
     local current_pattern_index = song.selected_pattern_index
 
-    -- Calculate the line index based on the step and loop every num_steps lines
-    for line_index = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+    -- Calculate the line index based on the step and loop every 16 ticks
+    for tick = step, song.patterns[current_pattern_index].number_of_lines, num_steps do
+      local line_index = (tick - 1) % song.patterns[current_pattern_index].number_of_lines + 1
+
       -- Access the note column in the specified track and line
       local pattern_track = song:pattern(current_pattern_index):track(track_index)
       local line = pattern_track:line(line_index)
+      local note_column = line:note_column(1) -- Assuming first note column
 
       if add_note then
         -- Add the note
-        local note_column = line:note_column(1) -- Assuming first note column
         note_column.note_value = note_value
         note_column.instrument_value = instrument_index
         note_column.volume_value = 128 -- Max volume (0-128 scale)
-        note_column.delay_value = 0 -- Ensure no note delay
-        note_column.panning_value = 255 -- No panning change
-        print("Added note " .. note_value .. " on instrument " .. (instrument_index + 1) .. " in track " .. track_index .. " at line " .. line_index)
+        print("Added note " .. note_value .. " on instrument " .. (instrument_index + 1) .. " in track " .. track_index .. " at tick " .. tick)
       else
-        -- Remove all notes (clear up to 12 note columns to handle chords)
-        for i = 1, 12 do
-          local note_column = line:note_column(i)
-          if note_column then
-            note_column.note_value = 121 -- 121 represents an empty note
-            note_column.instrument_value = 255 -- 255 represents no instrument
-            note_column.volume_value = 255 -- 255 represents no volume change
-            note_column.delay_value = 0 -- Clear any note delay
-            note_column.panning_value = 255 -- Clear any panning
-          end
-        end
-        print("Removed all notes in row " .. row_index .. " track " .. track_index .. " at line " .. line_index)
+        -- Remove the note
+        note_column.note_value = 121 -- 121 represents an empty note
+        note_column.instrument_value = 255 -- 255 represents no instrument
+        note_column.volume_value = 255 -- 255 represents no volume change
+        print("Removed note in track " .. track_index .. " at tick " .. tick)
       end
     end
   else
@@ -963,36 +780,69 @@ local function write_sequencer_to_pattern()
 end
 
 
--- Function to update note delay for all notes in a specific track
+-- Create a shared variable to store the delay value
+local delay_value = 0
+
+-- Function to update the note's delay value
+local function update_note_delay_value(value)
+  local song = renoise.song()
+  local track_index = song.selected_track_index
+  local line_index = song.selected_line_index
+  
+  -- Apply the delay value to the current note in the selected track
+  local note_column = song:pattern(song.selected_pattern_index)
+                         :track(track_index)
+                         :line(line_index)
+                         :note_column(1)  -- Assuming 1st note column
+  
+  -- Set the delay value for the note
+  note_column.delay_value = value
+  print("Set note delay to " .. note_column.delay_value)
+end
+
+
+-- Function to update the track's delay value
+local function update_delay_value(value)
+  local song = renoise.song()
+  local track_index = song.selected_track_index
+  
+  -- Set the track delay for the specified track
+  song.tracks[track_index].output_delay = value
+  print("Set track delay to " .. value, track_index)
+end
+
+
 local function update_note_delay_value(value, target_track_index)
   local song = renoise.song()
   local track_index = target_track_index or song.selected_track_index
   local current_pattern_index = song.selected_pattern_index
   local pattern = song:pattern(current_pattern_index)
   
-  -- Check if track exists and supports note columns
-  if track_index > #song.tracks then
-    print("ERROR: Track " .. track_index .. " doesn't exist")
-    return
-  end
-  
-  local track = song:track(track_index)
-  if track.type ~= renoise.Track.TRACK_TYPE_SEQUENCER then
-    print("ERROR: Track " .. track_index .. " is not a sequencer track (type: " .. track.type .. ")")
-    return
-  end
-  
-  if track.max_note_columns == 0 then
-    print("ERROR: Track " .. track_index .. " has no note columns available")
-    return
-  end
-  
-  -- Convert value from 0 to 255 range (note delay range)
-  local delay_hex_value = math.floor(value)
+  -- Convert value from 0 to 100 range to 0x00 to 0xFF hex range
+  -- 0 maps to 0x00 (no delay), 100 maps to 0xFF (maximum delay)
+  local delay_hex_value = math.floor((value / 100) * 255)
   delay_hex_value = math.max(0, math.min(255, delay_hex_value)) -- Clamp to 0-255 range
   
   -- Enable delay column on the track
+  local track = song:track(track_index)
   track.delay_column_visible = true
+  
+  -- Enable delay effect on the track if not already enabled
+  --local delay_device = nil
+  
+  -- Check if delay device already exists
+  -- for _, device in ipairs(track.devices) do
+  --   if device.name == "Delay" then
+  --     delay_device = device
+  --     break
+  --   end
+  -- end
+  
+  -- -- If no delay device found, add one
+  -- if not delay_device then
+  --   delay_device = track:insert_device_at("Audio/Effects/Native/Delay", 2)
+  --   print("Added delay device to track " .. track_index)
+  -- end
   
   -- Apply delay value to all notes in the pattern for this track
   local pattern_track = pattern:track(track_index)
@@ -1050,118 +900,23 @@ local function create_step_row(row_index, steps)
   local actual_steps = math.min(steps, num_steps)
   local row = vb:horizontal_aligner{
     
-      -- Instrument selector (first)
-      vb:popup{
-        id = "instrument_popup_" .. tostring(row_index),
-        width = cellSizeLg,
-        height = cellSize,
-        items = get_instrument_names(),
-        tooltip = "Select instrument for this row",
-        notifier = function(index)
-          sequencer_data[row_index].instrument = index
-          print("Selected instrument " .. index .. " (0-based: " .. (index-1) .. ") for row " .. row_index)
-          
-          -- Update the track name to reflect the new instrument
-          local song = renoise.song()
-          local track_index = get_track_index_for_row(row_index)
-          if track_index <= #song.tracks then
-            local instrument_name = song.instruments[index].name
-            song.tracks[track_index].name = "Sequencer_" .. instrument_name
-            print("Updated track " .. track_index .. " name to: " .. song.tracks[track_index].name)
-          end
-          
-          -- Update all currently checked steps in this row with the new instrument
-          local current_pattern_index = song.selected_pattern_index
-          local pattern = song:pattern(current_pattern_index)
-          local pattern_track = pattern:track(track_index)
-          
-          -- Go through all steps in this row
-          for s = 1, num_steps do
-            if sequencer_data[row_index].steps[s] then  -- If step checkbox is checked
-              -- Update all occurrences of this step in the pattern
-              for line_index = s, pattern.number_of_lines, num_steps do
-                local line = pattern_track:line(line_index)
-                local note_column = line:note_column(1)
-                
-                -- If there's a note on this line, update its instrument
-                if note_column.note_value ~= 121 then  -- 121 = empty note
-                  note_column.instrument_value = index - 1  -- Zero-based for pattern
-                  print("Updated step " .. s .. " at line " .. line_index .. " to instrument " .. index)
-                end
-              end
-            end
-          end
+      vb:rotary{
+        id = "track_delay_rotary_" .. tostring(row_index),  -- Unique ID for track delay rotary
+        min = -100,  -- Minimum delay value
+        max = 100,   -- Maximum delay value
+        value = 0,   -- Initialize with 0
+        width = cellSize,  -- Set width of the rotary control
+        notifier = function(value)
+          -- Update the track delay
+          update_delay_value(value)
         end
       },
-      
-      -- Chord track toggle
-      vb:button{
-        id = "chord_toggle_" .. tostring(row_index),
-        text = "C",
-        width = cellSize,
-        height = cellSize,
-        color = {80, 80, 80},  -- Gray when not chord track
-        tooltip = "Enable/disable chord mode for this row",
-        notifier = function()
-          toggle_chord_track(row_index)
-        end
-      },
-      
-      -- Chord selection dropdown
-      vb:popup{
-        id = "chord_popup_" .. tostring(row_index),
-        width = cellSizeLg,
-        height = cellSize,
-        items = get_available_chords(),
-        value = 1, -- Default to "None"
-        active = false, -- Initially disabled
-        tooltip = "Select chord type (enable C button first)",
-        notifier = function(index)
-          local chord_items = vb.views["chord_popup_" .. tostring(row_index)].items
-          local chord_type = chord_items[index]
-          sequencer_data[row_index].chord_type = chord_type
-          
-          -- Update track note columns if chord mode is enabled
-          if sequencer_data[row_index].is_chord_track then
-            local song = renoise.song()
-            local track_index = get_track_index_for_row(row_index)  -- Get actual track index
-            
-            if track_index <= #song.tracks then
-              local track = song.tracks[track_index]
-              if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
-                local chord_intervals = CHORD_TYPES[chord_type]
-                if chord_intervals and #chord_intervals > 0 then
-                  local num_notes = #chord_intervals
-                  track.visible_note_columns = math.max(1, math.min(12, num_notes))
-                  print("Updated track " .. track_index .. " to " .. num_notes .. " note columns for " .. chord_type .. " chord")
-                else
-                  track.visible_note_columns = 1
-                end
-                
-                -- Update all active steps with new chord type
-                for s = 1, num_steps do
-                  if sequencer_data[row_index].steps[s] then
-                    local note_to_use = sequencer_data[row_index].step_notes and sequencer_data[row_index].step_notes[s] or sequencer_data[row_index].note_value
-                    update_step_note_in_pattern(row_index, s, note_to_use)
-                  end
-                end
-                print("Updated all active steps with " .. chord_type .. " chord")
-              end
-            end
-          end
-          
-          print("Selected chord " .. chord_type .. " for row " .. row_index)
-        end
-      },
-      
-      -- Track Note rotary
       vb:rotary{
         id = "note_rotary_" .. tostring(row_index),  -- Unique ID for note rotary
         min = 0,     -- 0% (C2)
         max = 100,   -- 100% (C4) 
         value = 50,  -- 50% (C3 default)
         width = cellSize,  -- Set width of the rotary control
-        tooltip = "Track Note (base pitch for all steps)",
         notifier = function(value)
           -- Map percentage to constrained note using global range/scale
           local base_note_value = sequencer_data[row_index].base_note_value
@@ -1174,23 +929,18 @@ local function create_step_row(row_index, steps)
             vb.views[track_rotary_id].value = constrained_percentage
           end
           
-          -- Capture OLD track note value before updating
-          local old_track_note = sequencer_data[row_index].note_value or base_note_value
-          
-          -- Calculate transposition offset (how much the track note changed)
-          local transposition = new_note_value - old_track_note
+          -- Calculate transposition offset from base note
+          local transposition = new_note_value - base_note_value
           
           -- Update the note value for this row
           sequencer_data[row_index].note_value = new_note_value
           
           -- Update all step notes by applying the same transposition
           if sequencer_data[row_index].step_notes then
-            for step_index, old_step_note in pairs(sequencer_data[row_index].step_notes) do
-              -- Calculate offset from the OLD track note (this preserves the user's intended interval)
-              local step_offset = old_step_note - old_track_note
-              
-              -- Apply the offset to the NEW track note
-              local new_step_note = new_note_value + step_offset
+            for step_index, original_step_note in pairs(sequencer_data[row_index].step_notes) do
+              -- Calculate what this step note should be relative to the base
+              local step_offset = original_step_note - base_note_value
+              local new_step_note = base_note_value + transposition + step_offset
               
               -- Constrain to scale
               new_step_note = snap_to_scale(new_step_note, select(1, compute_note_range(base_note_value)), select(2, compute_note_range(base_note_value)))
@@ -1203,8 +953,6 @@ local function create_step_row(row_index, steps)
               if vb.views[step_rotary_id] then
                 vb.views[step_rotary_id].value = note_to_percentage(new_step_note, base_note_value)
               end
-              
-              print("Step " .. step_index .. ": old_step=" .. old_step_note .. ", offset=" .. step_offset .. ", new_step=" .. new_step_note)
             end
           end
           
@@ -1223,28 +971,131 @@ local function create_step_row(row_index, steps)
             end
           end
           
-          print("Updated track " .. row_index .. " note from " .. old_track_note .. " to " .. new_note_value .. " (transposition: " .. transposition .. " semitones)")
+          print("Updated track " .. row_index .. " note to " .. new_note_value .. " (constrained to scale)")
         end
       },
       
-      -- Track Delay rotary
+      -- Chord track toggle
+      vb:button{
+        id = "chord_toggle_" .. tostring(row_index),
+        text = "C",
+        width = cellSize,
+        height = cellSize,
+        color = {80, 80, 80},  -- Gray when not chord track
+        notifier = function()
+          toggle_chord_track(row_index)
+        end
+      },
+      
+      -- Chord selection dropdown
+      vb:popup{
+        id = "chord_popup_" .. tostring(row_index),
+        width = cellSizeLg,
+        height = cellSize,
+        items = get_available_chords(),
+        value = 1, -- Default to "None"
+        active = false, -- Initially disabled
+        notifier = function(index)
+          local chord_items = vb.views["chord_popup_" .. tostring(row_index)].items
+          sequencer_data[row_index].chord_type = chord_items[index]
+          print("Selected chord " .. chord_items[index] .. " for row " .. row_index)
+        end
+      },
+      
       vb:rotary{
-        id = "track_delay_rotary_" .. tostring(row_index),  -- Unique ID for track delay rotary
+        id = "note_delay_rotary_" .. tostring(row_index),  -- Unique ID for note delay rotary
+        min = 0,     -- Minimum note delay value
+        max = 255,   -- Maximum note delay value (Renoise uses 0-255 for note delay)
+        value = 0,   -- Initialize with 0
+        width = cellSize,  -- Set width of the rotary control
+        notifier = function(value)
+          -- Update the note delay for the specific row
+          update_note_delay_value(value, row_index)
+        end
+      },
+      
+      -- OLD CODE (commented out) - valuebox and minislider implementation
+      --[[
+      vb:valuebox{
+        id = "delay_valuebox_" .. tostring(row_index),  -- Unique ID for the numeric input (valuebox)
         min = -100,  -- Minimum delay value
         max = 100,   -- Maximum delay value
         value = 0,   -- Initialize with 0
-        width = cellSize,  -- Set width of the rotary control
-        tooltip = "Track Delay (-100ms to +100ms)",
+        width = 50,  -- Set width of the valuebox input
         notifier = function(value)
-          -- Update the track delay for the specific row
-          local track_index = get_track_index_for_row(row_index)  -- Get actual track index
+          -- Update the delay value and clamp between -100 and 100
+          delay_value = math.min(100, math.max(-100, math.floor(value)))
+          
+          -- Update both the slider and the track delay
+          vb.views["minislider_" .. tostring(row_index)].value = delay_value
+          update_delay_value(delay_value)
+        end
+      },
+      
+      vb:minislider{
+        id = "minislider_" .. tostring(row_index),  -- Unique ID for the minislider
+        min = -100,  -- Minimum delay value
+        max = 100,   -- Maximum delay value
+        value = 0,   -- Start from the middle
+        notifier = function(value)
+          -- Update the valuebox when the slider changes
+          vb.views["delay_valuebox_" .. tostring(row_index)].value = value
+          update_delay_value(value)
+        end
+      },
+      --]]
+      
+      vb:popup{
+        id = "instrument_popup_" .. tostring(row_index),
+        width = cellSizeLg,
+        height = cellSize,
+        items = get_instrument_names(),
+        notifier = function(index)
+          sequencer_data[row_index].instrument = index
+          print("Selected instrument " .. index .. " (0-based: " .. (index-1) .. ") for row " .. row_index)
+          
+          -- Update all currently checked steps in this row with the new instrument
           local song = renoise.song()
-          if track_index <= #song.tracks then
-            song.tracks[track_index].output_delay = value
-            print("Set track delay to " .. value .. " for track " .. track_index)
-          else
-            print("ERROR: Track " .. track_index .. " doesn't exist")
+          local current_pattern_index = song.selected_pattern_index
+          local pattern = song:pattern(current_pattern_index)
+          local pattern_track = pattern:track(row_index)
+          
+          -- Go through all steps in this row
+          for s = 1, num_steps do
+            if sequencer_data[row_index].steps[s] then  -- If step checkbox is checked
+              -- Update all occurrences of this step in the pattern
+              for tick = s, pattern.number_of_lines, num_steps do
+                local line_index = (tick - 1) % pattern.number_of_lines + 1
+                local line = pattern_track:line(line_index)
+                local note_column = line:note_column(1)
+                
+                -- If there's a note on this line, update its instrument
+                if note_column.note_value ~= 121 then  -- 121 = empty note
+                  note_column.instrument_value = index - 1  -- Zero-based for pattern
+                  print("Updated step " .. s .. " at line " .. line_index .. " to instrument " .. index)
+                end
+              end
+            end
           end
+        end
+      },
+      
+      vb:button{
+        text = "?",
+        width = cellSize,
+        height = cellSize,
+        notifier = function()
+          save_row_as_phrase(row_index)
+        end
+      },
+      
+      -- Preview button for triggering sample/chord
+      vb:button{
+        text = "►",
+        width = cellSize,
+        height = cellSize,
+        notifier = function()
+          trigger_sample(row_index)
         end
       },
       
@@ -1254,8 +1105,7 @@ local function create_step_row(row_index, steps)
         text = "N",
         width = cellSize,
         height = cellSize,
-        color = {80, 80, 80},  -- Gray when hidden (default)
-        tooltip = "Toggle note row visibility",
+        color = {100, 255, 100},  -- Green when visible
         notifier = function()
           toggle_note_row_visibility(row_index)
         end
@@ -1266,8 +1116,7 @@ local function create_step_row(row_index, steps)
         text = "V",
         width = cellSize,
         height = cellSize,
-        color = {80, 80, 80},  -- Gray when hidden (default)
-        tooltip = "Toggle volume row visibility",
+        color = {100, 255, 100},  -- Green when visible
         notifier = function()
           toggle_volume_row_visibility(row_index)
         end
@@ -1303,6 +1152,19 @@ local function create_step_row(row_index, steps)
     end
   }
   
+  renoise.tool():add_midi_mapping{
+    name = "Step Sequencer: Row " .. row_index .. " Note Delay",
+    invoke = function(message)
+      if (message:is_abs_value()) then
+        -- Convert MIDI CC value (0-127) to delay range (0-255)
+        local delay_value = (message.int_value / 127) * 255
+        local control_id = "note_delay_rotary_" .. tostring(row_index)
+        if vb.views[control_id] then
+          vb.views[control_id].value = delay_value
+        end
+      end
+    end
+  }
   
   -- Add checkboxes for each step (only create what we need)
   for s = 1, actual_steps do
@@ -1338,28 +1200,6 @@ local function create_step_row(row_index, steps)
     })
   end
   
-  -- Add Save and Remove buttons after the steps
-  row:add_child(vb:button{
-    text = "S",
-    width = cellSize,
-    height = cellSize,
-    tooltip = "Save row as phrase",
-    notifier = function()
-      save_row_as_phrase(row_index)
-    end
-  })
-  
-  row:add_child(vb:button{
-    text = "X",
-    width = cellSize,
-    height = cellSize,
-    color = {255, 80, 80},  -- Red color
-    tooltip = "Remove this row and clear pattern notes",
-    notifier = function()
-      remove_sequencer_row(row_index)
-    end
-  })
-  
   return row
 end
 
@@ -1368,19 +1208,22 @@ local function create_note_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local note_row = vb:horizontal_aligner{
-    -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, text = ""},  -- Instrument space
-    vb:text{width = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, text = ""},  -- Track note space  
+    -- Add spacing to align with the step row controls
     vb:text{width = cellSize, text = ""},  -- Track delay space
+    vb:text{width = cellSize, text = ""},  -- Note rotary space  
+    vb:text{width = cellSize, text = ""},  -- Note delay space
+    vb:text{width = cellSizeLg, height = cellSize, text = "Note"}, -- Label for note row
+    vb:text{width = cellSize, text = ""},  -- Save button space
+    vb:text{width = cellSize, text = ""},  -- Preview button space
     vb:text{width = cellSize, text = ""},  -- Note toggle space
     vb:text{width = cellSize, text = ""},  -- Volume toggle space
+    vb:text{width = cellSize, text = ""},  -- Chord toggle space
+    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
   }
   
   -- Initialize visibility state
   if not track_visibility[row_index] then
-    track_visibility[row_index] = {note_visible = false, volume_visible = false}
+    track_visibility[row_index] = {note_visible = true, volume_visible = true}
   end
   
   -- Add rotary dials for each step (only create what we need)
@@ -1446,19 +1289,22 @@ local function create_volume_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local volume_row = vb:horizontal_aligner{
-    -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, text = ""},  -- Instrument space
-    vb:text{width = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, text = ""},  -- Track note space
+    -- Add spacing to align with the step row controls
     vb:text{width = cellSize, text = ""},  -- Track delay space
+    vb:text{width = cellSize, text = ""},  -- Note rotary space  
+    vb:text{width = cellSize, text = ""},  -- Note delay space
+    vb:text{width = cellSizeLg, height = cellSize, text = "Volume"}, -- Label for volume row
+    vb:text{width = cellSize, text = ""},  -- Save button space
+    vb:text{width = cellSize, text = ""},  -- Preview button space
     vb:text{width = cellSize, text = ""},  -- Note toggle space
     vb:text{width = cellSize, text = ""},  -- Volume toggle space
+    vb:text{width = cellSize, text = ""},  -- Chord toggle space
+    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
   }
   
   -- Initialize visibility state
   if not track_visibility[row_index] then
-    track_visibility[row_index] = {note_visible = false, volume_visible = false}
+    track_visibility[row_index] = {note_visible = true, volume_visible = true}
   end
   
   -- Add rotary dials for each step volume (only create what we need)
@@ -1586,17 +1432,13 @@ local function clear_notes_outside_range(new_steps, current_steps)
       -- If this step is beyond the new step count, clear it
       if step_in_current_pattern > new_steps then
         local line = pattern_track:line(line_index)
+        local note_column = line:note_column(1)
         
-        -- Clear all note columns (to handle chords)
-        for i = 1, 12 do
-          local note_column = line:note_column(i)
-          if note_column and note_column.note_value ~= 121 then  -- 121 = empty note
-            note_column.note_value = 121
-            note_column.instrument_value = 255
-            note_column.volume_value = 255
-            note_column.delay_value = 0
-            note_column.panning_value = 255
-          end
+        -- Clear the note if it exists
+        if note_column.note_value ~= 121 then  -- 121 = empty note
+          note_column.note_value = 121
+          note_column.instrument_value = 255
+          note_column.volume_value = 255
         end
       end
     end
@@ -1652,25 +1494,14 @@ end
 
 
 ----------------------------------------------------------MAIN
+-- Dialog management
+local dialog = nil
+
 -- Create the main dialog window
-function show_sequencer_dialog()
+local function show_sequencer_dialog()
   -- Close existing dialog if open
   if dialog and dialog.visible then
     dialog:close()
-  end
-  
-  -- Rebuild track mapping to ensure correct track indices
-  rebuild_track_mapping()
-  
-  -- Remove existing MIDI mappings to avoid duplicates
-  -- Note: We can't remove all at once with a pattern, so we try to remove known ones
-  for r = 1, 20 do  -- Remove up to 20 potential rows
-    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Delay") end)
-    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Note") end)
-    for s = 1, 64 do
-      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Note") end)
-      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Volume") end)
-    end
   end
   
   -- Create new ViewBuilder instance to avoid ID conflicts
@@ -1829,53 +1660,43 @@ function show_sequencer_dialog()
       notifier = function()
         local song = renoise.song()
         
-        -- Find the insertion point
-        local last_seq_index = find_last_sequencer_track_index()
-        local insert_position
-        
-        if last_seq_index == 0 then
-          -- No sequencer tracks exist yet - add at the end
-          insert_position = #song.tracks + 1
-        else
-          -- Insert after the last sequencer track
-          insert_position = last_seq_index + 1
+        -- Find the Sequencer group track
+        local sequencer_group_index = nil
+        for i, track in ipairs(song.tracks) do
+          if track.type == renoise.Track.TRACK_TYPE_GROUP and track.name == "Sequencer" then
+            sequencer_group_index = i
+            break
+          end
         end
         
-        -- Add a new track at the correct position
-        song:insert_track_at(insert_position)
-        
-        -- Update track mapping
-        local new_row_index = #sequencer_data + 1
-        track_mapping[new_row_index] = insert_position
-        rebuild_track_mapping()
+        if sequencer_group_index then
+          -- Create a new track after the existing sequencer tracks
+          local new_track_index = sequencer_group_index + #sequencer_data + 1
+          song:insert_track_at(new_track_index)
+          
+          -- Name the new track
+          song.tracks[new_track_index].name = "Seq " .. (#sequencer_data + 1)
+          
+          print("Added new track " .. new_track_index .. " to Sequencer group at index " .. sequencer_group_index)
+        else
+          print("Sequencer group not found!")
+        end
         
         -- Update sequencer UI
         num_rows = num_rows + 1
+        local new_row_index = #sequencer_data + 1
         -- Initialize data before creating controls so notifiers can access it
         sequencer_data[new_row_index] = {instrument = 1, note_value = 48, base_note_value = 48, steps = {}, step_notes = {}, step_volumes = {}, is_chord_track = false, chord_type = "None"}
         for s = 1, num_steps do
           sequencer_data[new_row_index].steps[s] = false
         end
         
-        -- Set the track name based on default instrument
-        if #song.instruments > 0 then
-          local instrument_name = song.instruments[1].name
-          song.tracks[insert_position].name = "Sequencer_" .. instrument_name
-          print("Added new track " .. insert_position .. ": " .. song.tracks[insert_position].name)
-        end
-        
         -- Initialize visibility data for new row
-        track_visibility[new_row_index] = {note_visible = false, volume_visible = false}
+        track_visibility[new_row_index] = {note_visible = true, volume_visible = true}
         step_grid_view:add_child(create_step_row(new_row_index, num_steps))  -- Create only current steps
         step_grid_view:add_child(create_note_row(new_row_index, num_steps))  -- Create only current steps
         step_grid_view:add_child(create_volume_row(new_row_index, num_steps))  -- Create only current steps
         apply_global_note_constraints()
-        
-        -- Set focus to the new track
-        if track_mapping[new_row_index] then
-          song.selected_track_index = track_mapping[new_row_index]
-          print("Set selected track to new track " .. track_mapping[new_row_index])
-        end
       end
     },
     vb:button{
@@ -1910,35 +1731,23 @@ function show_sequencer_dialog()
   -- Setup default track group on first run
   setup_default_track_group()
   
-  -- Sync num_rows with actual sequencer_data length
-  num_rows = math.max(1, #sequencer_data)
-  
   -- Initialize default sequencer rows if empty
   if #sequencer_data == 0 then
-    sequencer_data[1] = {instrument = 1, note_value = 48, base_note_value = 48, steps = {}, step_notes = {}, step_volumes = {}, is_chord_track = false, chord_type = "None"}
-    for s = 1, num_steps do
-      sequencer_data[1].steps[s] = false
-    end
-    track_visibility[1] = {note_visible = false, volume_visible = false}
-    num_rows = 1
-  end
-  
-  -- Create UI for all existing sequencer rows
-  for r = 1, #sequencer_data do
-    if sequencer_data[r] then
-      -- Initialize visibility data if not exists
-      if not track_visibility[r] then
-        track_visibility[r] = {note_visible = false, volume_visible = false}
+    for r = 1, num_rows do
+      sequencer_data[r] = {instrument = 1, note_value = 48, base_note_value = 48, steps = {}, step_notes = {}, step_volumes = {}, is_chord_track = false, chord_type = "None"}
+      for s = 1, num_steps do
+        sequencer_data[r].steps[s] = false
       end
+      -- Initialize visibility data
+      track_visibility[r] = {note_visible = true, volume_visible = true}
       
       -- Create the rows
       step_grid_view:add_child(create_step_row(r, num_steps))
       step_grid_view:add_child(create_note_row(r, num_steps))
       step_grid_view:add_child(create_volume_row(r, num_steps))
     end
+    apply_global_note_constraints()
   end
-  
-  apply_global_note_constraints()
 
   dialog_content = vb:column{
     controls_row,
@@ -1947,14 +1756,12 @@ function show_sequencer_dialog()
   }
   
   -- Calculate dialog width to match content  
-  -- Base controls width: I(96) + C(24) + Chord(96) + TN(24) + TD(24) + N(24) + V(24) = 312
+  -- Base controls width: TD(24) + TN(24) + ND(24) + I(96) + ?(24) + ►(24) + N(24) + V(24) + C(24) + Chord(96) = 384
   -- Step controls width: num_steps * 24
-  -- After steps: S(24) + X(24) = 48
   -- Total width with margins
-  local base_controls_width = cellSize * 5 + cellSizeLg * 2  -- 312
+  local base_controls_width = cellSize * 8 + cellSizeLg * 2  -- 384
   local steps_width = num_steps * cellSize
-  local after_steps_width = cellSize * 2  -- S and X buttons
-  local total_content_width = base_controls_width + steps_width + after_steps_width
+  local total_content_width = base_controls_width + steps_width
   local dialog_width = total_content_width + (dialog_margin * 2)
 
   --update_step_count(num_steps)
@@ -1979,7 +1786,6 @@ renoise.tool():add_menu_entry {
   name = "Main Menu:Tools:Step Sequencer",
   invoke = show_sequencer_dialog
 }
-
 
 
 
