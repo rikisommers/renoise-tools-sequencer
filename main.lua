@@ -262,6 +262,7 @@ dialog = nil  -- Main dialog window
 
 -- Forward declarations (defined later)
 local show_sequencer_dialog
+local update_mute_button_color
 update_step_note_in_pattern = nil  -- Will be defined later
 update_note_in_pattern = nil  -- Will be defined later
 update_step_volume_in_pattern = nil  -- Will be defined later
@@ -783,7 +784,57 @@ local function setup_default_track_group()
   end
 end
 
+-- Helper function to update mute button color based on track state
+update_mute_button_color = function(row_index)
+  local track_index = get_track_index_for_row(row_index)
+  if not track_index then
+    return
+  end
+  
+  local song = renoise.song()
+  if track_index > #song.tracks then
+    return
+  end
+  
+  local track = song.tracks[track_index]
+  local button_id = "mute_button_" .. tostring(row_index)
+  
+  if vb.views[button_id] then
+    -- Check if track is muted or off
+    local is_muted = (track.mute_state == renoise.Track.MUTE_STATE_MUTED or 
+                      track.mute_state == renoise.Track.MUTE_STATE_OFF)
+    
+    -- Use same color scheme as chord enable button
+    vb.views[button_id].color = is_muted and {255, 200, 100} or {80, 80, 80}
+  end
+end
 
+-- Function to mute/unmute a track
+local function toggle_track_mute(row_index)
+  local track_index = get_track_index_for_row(row_index)
+  if not track_index then
+    return
+  end
+  
+  local song = renoise.song()
+  local track = song.tracks[track_index]
+  
+  if track then
+    -- Check if track is muted
+    local is_muted = (track.mute_state == renoise.Track.MUTE_STATE_MUTED or 
+                      track.mute_state == renoise.Track.MUTE_STATE_OFF)
+    
+    if is_muted then
+      track:unmute()
+    else
+      track:mute()
+    end
+    
+    -- Update button color to reflect new state
+    update_mute_button_color(row_index)
+  end
+end
+  
 -- Function to save a row as a phrase
 local function save_row_as_phrase(row_index)
   local data = sequencer_data[row_index]
@@ -894,80 +945,6 @@ local function create_step_indicators(steps)
   return row
 end
 
-
--- Function to trigger a sample or chord for a specific row
-local function trigger_sample(row_index)
-  local data = sequencer_data[row_index]
-  if data and data.instrument then
-    local instrument_index = data.instrument
-    local instrument = renoise.song().instruments[instrument_index]
-    
-    -- Check if the instrument has samples
-    if #instrument.samples > 0 then
-      local sample = instrument.samples[1]  -- Trigger the first sample in the instrument
-      local root_note = data.note_value or 48  -- Use dynamic note value or default to C3
-      local velocity = 100   -- 0-127 range
-      
-      -- Generate notes (single note or chord)
-      local notes_to_trigger = {}
-      if data.is_chord_track and data.chord_type ~= "None" then
-        notes_to_trigger = generate_chord_notes(root_note, data.chord_type)
-      else
-        notes_to_trigger = {root_note}
-      end
-      
-      -- Trigger all notes
-      for _, note_value in ipairs(notes_to_trigger) do
-        sample:trigger_attack(note_value, velocity)
-      end
-      
-      local chord_info = data.is_chord_track and " (" .. data.chord_type .. " chord)" or ""
-      print("Triggered sample on instrument " .. instrument_index .. " ('" .. instrument.name .. "') with notes " .. table.concat(notes_to_trigger, ", ") .. chord_info)
-    else
-      print("No samples found in instrument " .. instrument_index)
-    end
-  else
-    print("No instrument data for row " .. row_index)
-  end
-end
-
-
--- Function to trigger a sample for a specific row
-local function trigger_sample_bak(row_index)
-  local data = sequencer_data[row_index]
-  if data and data.instrument then
-    local instrument_index = data.instrument
-    local track_index = row_index
-    local note_value = 48 -- C3 in MIDI note numbers
-    
-       local instrument = renoise.song().instruments[instrument_index]
-    local note_value = 48 -- C3 in MIDI note numbers
-    local velocity = 100 -- 0-127 range
-
-    -- Trigger the note using MIDI trigger
-    instrument:midi_trigger(note_value, velocity)
-    
-    
-        -- Get the current pattern and line
-    local song = renoise.song()
-    local current_pattern_index = song.selected_pattern_index
-    local current_line_index = song.selected_line_index
-    
-        -- Access the note column in the specified track and line
-    local track = song:track(track_index)
-    local line = song:pattern(current_pattern_index):track(track_index):line(current_line_index)
-    
-    -- Write the note into the pattern
-    local note_column = line:note_column(1) -- Assuming first note column
-    note_column.note_value = note_value
-    note_column.instrument_value = instrument_index - 1 -- Instrument index is zero-based in patterns
-    note_column.volume_value = 128 -- Max volume (0-128 scale)
-    
-    print("Triggered note C3 on instrument " .. instrument_index .. " in track " .. track_index)
-  else
-    print("No instrument data for row " .. row_index)
-  end
-end
 
 -- Function to update a specific step with a specific volume value
 update_step_volume_in_pattern = function(row_index, step, volume_value)
@@ -1708,9 +1685,26 @@ local function create_step_row(row_index, steps)
     })
   end
   
+  -- Add mute track button
+  local mute_button_id = "mute_button_" .. tostring(row_index)
+  
+  row:add_child(vb:button{
+    id = mute_button_id,
+    text = "M",
+    width = cellSize,
+    height = cellSize,
+    tooltip = "Mute/unmute track",
+    notifier = function()
+      toggle_track_mute(row_index)
+    end
+  })
+  
+  -- Update button color based on current track state
+  update_mute_button_color(row_index)
+  
   -- Add Save and Remove buttons after the steps
   row:add_child(vb:button{
-    text = "S",  -- Save
+    text = "S",  -- Common Renoise phrase icon (double eighth notes)
     width = cellSize,
     height = cellSize,
     tooltip = "Save row as phrase",
