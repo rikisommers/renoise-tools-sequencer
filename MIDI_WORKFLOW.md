@@ -1,8 +1,8 @@
-# Step Sequencer - MIDI Workflow Guide
+# Requencer - MIDI Workflow Guide
 
 ## Overview
 
-The Renoise Step Sequencer tool provides comprehensive MIDI mapping support for all controls, allowing you to use hardware MIDI controllers to manipulate the sequencer in real-time. This guide explains how to set up and use MIDI Learn to control your step sequencer.
+The Renoise Requencer tool provides comprehensive MIDI mapping support for all controls, allowing you to use hardware MIDI controllers to manipulate the sequencer in real-time. This guide explains how to set up and use MIDI Learn to control your Requencer.
 
 ---
 
@@ -19,7 +19,7 @@ The Renoise Step Sequencer tool provides comprehensive MIDI mapping support for 
    - Select **MIDI Mapping** section
 
 3. **Use MIDI Learn**
-   - Click on any mapping name (e.g., "Step Sequencer: Row 1 Track Volume")
+   - Click on any mapping name (e.g., "Requencer: Row 1 Track Volume")
    - Move/turn the control on your MIDI controller
    - The mapping is automatically assigned!
 
@@ -37,11 +37,11 @@ Each sequencer row provides three track-level MIDI mappings:
 
 | Mapping Name | Control | Range | Description |
 |--------------|---------|-------|-------------|
-| `Step Sequencer: Row X Track Note` | Track Note Rotary (TN) | 0-100% | Base pitch for all steps in the row |
-| `Step Sequencer: Row X Track Delay` | Track Delay Rotary (TD) | -100 to +100ms | Timing offset for entire track |
-| `Step Sequencer: Row X Track Volume` | Track Volume Rotary (TV) | 0-100% | Master volume for entire row |
+| `Requencer: Row X Track Note` | Track Note Rotary (TN) | 0-100% | Base pitch for all steps in the row |
+| `Requencer: Row X Track Delay` | Track Delay Rotary (TD) | -100 to +100ms | Timing offset for entire track |
+| `Requencer: Row X Track Volume` | Track Volume Rotary (TV) | 0-100% | Master volume for entire row |
 
-**Example:** `Step Sequencer: Row 1 Track Volume`
+**Example:** `Requencer: Row 1 Track Volume`
 - Maps to the TV rotary on Row 1
 - Controls the track's master volume
 - 0% = silent, 100% = full volume
@@ -54,11 +54,11 @@ Each individual step in each row provides three MIDI mappings:
 
 | Mapping Name | Control | Range | Description |
 |--------------|---------|-------|-------------|
-| `Step Sequencer: Row X Step Y Note` | Step Note Rotary | 0-100% | Individual pitch for this step |
-| `Step Sequencer: Row X Step Y Volume` | Step Volume Rotary | 0-127 | Individual volume for this step |
-| `Step Sequencer: Row X Step Y Delay` | Step Delay Rotary | 0-255 | Individual timing offset for this step |
+| `Requencer: Row X Step Y Note` | Step Note Rotary | 0-100% | Individual pitch for this step |
+| `Requencer: Row X Step Y Volume` | Step Volume Rotary | 0-127 | Individual volume for this step |
+| `Requencer: Row X Step Y Delay` | Step Delay Rotary | 0-255 | Individual timing offset for this step |
 
-**Example:** `Step Sequencer: Row 1 Step 4 Note`
+**Example:** `Requencer: Row 1 Step 4 Note`
 - Maps to the note rotary for Step 4 on Row 1
 - Adjusts the pitch of only that specific step
 - Respects scale and octave constraints
@@ -211,14 +211,14 @@ The tool responds to:
 
 All mappings follow consistent naming:
 ```
-"Step Sequencer: Row [ROW_NUMBER] [CONTROL_TYPE]"
-"Step Sequencer: Row [ROW_NUMBER] Step [STEP_NUMBER] [CONTROL_TYPE]"
+"Requencer: Row [ROW_NUMBER] [CONTROL_TYPE]"
+"Requencer: Row [ROW_NUMBER] Step [STEP_NUMBER] [CONTROL_TYPE]"
 ```
 
 Examples:
-- `Step Sequencer: Row 1 Track Volume`
-- `Step Sequencer: Row 2 Step 5 Note`
-- `Step Sequencer: Row 3 Track Delay`
+- `Requencer: Row 1 Track Volume`
+- `Requencer: Row 2 Step 5 Note`
+- `Requencer: Row 3 Track Delay`
 
 ---
 

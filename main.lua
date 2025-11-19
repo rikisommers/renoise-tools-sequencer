@@ -1564,7 +1564,7 @@ local function create_step_row(row_index, steps)
   }
   
   -- Add MIDI mappings for track controls (remove old ones first to prevent duplicates)
-  local track_delay_mapping = "Step Sequencer: Row " .. row_index .. " Track Delay"
+  local track_delay_mapping = "Requencer: Row " .. row_index .. " Track Delay"
   pcall(function() renoise.tool():remove_midi_mapping(track_delay_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_delay_mapping,
@@ -1580,7 +1580,7 @@ local function create_step_row(row_index, steps)
     end
   }
   
-  local track_volume_mapping = "Step Sequencer: Row " .. row_index .. " Track Volume"
+  local track_volume_mapping = "Requencer: Row " .. row_index .. " Track Volume"
   pcall(function() renoise.tool():remove_midi_mapping(track_volume_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_volume_mapping,
@@ -1596,7 +1596,7 @@ local function create_step_row(row_index, steps)
     end
   }
   
-  local track_note_mapping = "Step Sequencer: Row " .. row_index .. " Track Note"
+  local track_note_mapping = "Requencer: Row " .. row_index .. " Track Note"
   pcall(function() renoise.tool():remove_midi_mapping(track_note_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_note_mapping,
@@ -1796,7 +1796,7 @@ local function create_note_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this rotary  
-    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Note"
+    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Note"
     renoise.tool():add_midi_mapping{
       name = mapping_name,
       invoke = function(message)
@@ -1869,7 +1869,7 @@ local function create_volume_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this volume rotary  
-    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Volume"
+    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Volume"
     renoise.tool():add_midi_mapping{
       name = mapping_name,
       invoke = function(message)
@@ -1938,7 +1938,7 @@ local function create_delay_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this delay rotary  
-    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Delay"
+    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Delay"
     pcall(function() renoise.tool():remove_midi_mapping(mapping_name) end)
     renoise.tool():add_midi_mapping{
       name = mapping_name,
@@ -2122,11 +2122,11 @@ function show_sequencer_dialog()
   -- Remove existing MIDI mappings to avoid duplicates
   -- Note: We can't remove all at once with a pattern, so we try to remove known ones
   for r = 1, 20 do  -- Remove up to 20 potential rows
-    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Delay") end)
-    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Note") end)
+    pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Track Delay") end)
+    pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Track Note") end)
     for s = 1, 64 do
-      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Note") end)
-      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Volume") end)
+      pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Step " .. s .. " Note") end)
+      pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Step " .. s .. " Volume") end)
     end
   end
   
@@ -2461,7 +2461,7 @@ function show_sequencer_dialog()
   end)
 
   -- Show dialog with calculated width
-  dialog = renoise.app():show_custom_dialog("Step Sequencer", dialog_content, function()
+  dialog = renoise.app():show_custom_dialog("Requencer", dialog_content, function()
     -- Dialog closed callback (optional)
   end)
   
@@ -2474,7 +2474,6 @@ function show_sequencer_dialog()
 end
 
 renoise.tool():add_menu_entry {
-  name = "Main Menu:Tools:Step Sequencer",
+  name = "Main Menu:Tools:Requencer",
   invoke = show_sequencer_dialog
 }
-
