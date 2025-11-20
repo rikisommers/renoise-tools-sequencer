@@ -7,7 +7,7 @@ local control_mini_height = renoise.ViewBuilder.DEFAULT_MINI_CONTROL_HEIGHT
 local dialog_margin = renoise.ViewBuilder.DEFAULT_DIALOG_MARGIN
 local dialog_spacing = renoise.ViewBuilder.DEFAULT_DIALOG_SPACING
 local button_height = renoise.ViewBuilder.DEFAULT_DIALOG_BUTTON_HEIGHT
-local section_spacing = 12  -- Spacing between major sections (controls, indicators, grid)
+local section_spacing = 16  -- Spacing between major sections (controls, indicators, grid)
 
 local num_steps_options = {"8", "16", "32", "64"}
 local pattern = 1  -- Default pattern index
@@ -1266,6 +1266,64 @@ local function clear_pattern_and_sequencer()
   print("Cleared all notes from pattern and sequencer")
 end
 
+--- Sync pattern notes to sequencer (read notes from pattern and update sequencer)
+local function sync_pattern_to_sequencer()
+  local song = renoise.song()
+  local current_pattern_index = song.selected_pattern_index
+  local pattern = song:pattern(current_pattern_index)
+  
+  print("=== Syncing pattern to sequencer ===")
+  
+  -- For each sequencer row
+  for row_index = 1, #sequencer_data do
+    local track_index = get_track_index_for_row(row_index)
+    
+    if track_index and track_index <= #song.tracks then
+      local pattern_track = pattern:track(track_index)
+      
+      -- Read notes from pattern lines 1-num_steps
+      for step = 1, num_steps do
+        local line = pattern_track:line(step)
+        local note_column = line:note_column(1)
+        
+        if note_column and note_column.note_value < 121 then
+          -- Found a note - set step to Play and store note value
+          sequencer_data[row_index].step_states[step] = 1  -- Play
+          sequencer_data[row_index].step_notes[step] = note_column.note_value
+          
+          -- Update UI button
+          local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step)
+          if vb.views[button_id] then
+            vb.views[button_id].text = note_value_to_string(note_column.note_value)
+            vb.views[button_id].color = {100, 255, 100}  -- Green for Play
+          end
+          
+          -- Update note rotary
+          local note_rotary_id = "step_note_rotary_" .. tostring(row_index) .. "_" .. tostring(step)
+          if vb.views[note_rotary_id] then
+            local rotary_value = map_note_to_rotary(note_column.note_value)
+            vb.views[note_rotary_id].value = rotary_value
+          end
+          
+          print("Row " .. row_index .. " Step " .. step .. ": Found note " .. note_column.note_value .. " (" .. note_value_to_string(note_column.note_value) .. ")")
+        else
+          -- No note - set step to Off
+          sequencer_data[row_index].step_states[step] = 0  -- Off
+          sequencer_data[row_index].step_notes[step] = nil
+          
+          -- Update UI button
+          local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step)
+          if vb.views[button_id] then
+            vb.views[button_id].text = " "
+            vb.views[button_id].color = {80, 80, 80}  -- Gray for Off
+          end
+        end
+      end
+    end
+  end
+  
+  print("Pattern sync complete!")
+end
 
 -- Create a row for the sequencer
 local function create_step_row(row_index, steps)
@@ -1398,7 +1456,7 @@ local function create_step_row(row_index, steps)
         min = 0,     -- 0% (C2)
         max = 100,   -- 100% (C4) 
         value = 50,  -- 50% (C3 default)
-        width = cellSize,  -- Set width of the rotary control
+        width = cellSize,
         tooltip = "Track Note (base pitch for all steps)",
         notifier = function(value)
           -- Map percentage to constrained note using global range/scale
@@ -1481,7 +1539,7 @@ local function create_step_row(row_index, steps)
         min = -100,  -- Minimum delay value
         max = 100,   -- Maximum delay value
         value = 0,   -- Initialize with 0
-        width = cellSize,  -- Set width of the rotary control
+        width = cellSize,
         tooltip = "Track Delay (-100ms to +100ms)",
         notifier = function(value)
           -- Update the track delay for the specific row
@@ -1564,7 +1622,7 @@ local function create_step_row(row_index, steps)
   }
   
   -- Add MIDI mappings for track controls (remove old ones first to prevent duplicates)
-  local track_delay_mapping = "Requencer: Row " .. row_index .. " Track Delay"
+  local track_delay_mapping = "Step Sequencer: Row " .. row_index .. " Track Delay"
   pcall(function() renoise.tool():remove_midi_mapping(track_delay_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_delay_mapping,
@@ -1580,7 +1638,7 @@ local function create_step_row(row_index, steps)
     end
   }
   
-  local track_volume_mapping = "Requencer: Row " .. row_index .. " Track Volume"
+  local track_volume_mapping = "Step Sequencer: Row " .. row_index .. " Track Volume"
   pcall(function() renoise.tool():remove_midi_mapping(track_volume_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_volume_mapping,
@@ -1596,7 +1654,7 @@ local function create_step_row(row_index, steps)
     end
   }
   
-  local track_note_mapping = "Requencer: Row " .. row_index .. " Track Note"
+  local track_note_mapping = "Step Sequencer: Row " .. row_index .. " Track Note"
   pcall(function() renoise.tool():remove_midi_mapping(track_note_mapping) end)
   renoise.tool():add_midi_mapping{
     name = track_note_mapping,
@@ -1768,7 +1826,7 @@ local function create_note_row(row_index, steps)
       min = 0,     -- 0% (C2)
       max = 100,   -- 100% (C4) 
       value = 50,  -- 50% (C3 default)
-      width = cellSize,  -- Same width as checkboxes
+      width = cellSize,
       notifier = function(value)
         -- Convert percentage to constrained note using global range/scale
         local base_note_value = sequencer_data[row_index].base_note_value or 48
@@ -1796,7 +1854,7 @@ local function create_note_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this rotary  
-    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Note"
+    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Note"
     renoise.tool():add_midi_mapping{
       name = mapping_name,
       invoke = function(message)
@@ -1815,7 +1873,11 @@ local function create_note_row(row_index, steps)
   track_note_rows[row_index] = note_row
   note_row.visible = track_visibility[row_index].note_visible
   
-  return note_row
+  -- Wrap with vertical spacing
+  return vb:column{
+    spacing = 4,
+    note_row
+  }
 end
 
 -- Create a volume row with rotary dials for each step
@@ -1848,7 +1910,7 @@ local function create_volume_row(row_index, steps)
       min = 0,     -- 0% (silent)
       max = 100,   -- 100% (full volume) 
       value = 100, -- 100% (full volume default)
-      width = cellSize,  -- Same width as checkboxes
+      width = cellSize,
       notifier = function(value)
         -- Convert percentage to MIDI volume value (0-127 range)
         local volume_value = math.floor((value / 100) * 127)
@@ -1869,7 +1931,7 @@ local function create_volume_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this volume rotary  
-    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Volume"
+    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Volume"
     renoise.tool():add_midi_mapping{
       name = mapping_name,
       invoke = function(message)
@@ -1888,7 +1950,11 @@ local function create_volume_row(row_index, steps)
   track_volume_rows[row_index] = volume_row
   volume_row.visible = track_visibility[row_index].volume_visible
   
-  return volume_row
+  -- Wrap with vertical spacing
+  return vb:column{
+    spacing = 4,
+    volume_row
+  }
 end
 
 -- Create a delay row for per-step delay controls
@@ -1938,7 +2004,7 @@ local function create_delay_row(row_index, steps)
     })
     
     -- Add MIDI mapping for this delay rotary  
-    local mapping_name = "Requencer: Row " .. row_index .. " Step " .. s .. " Delay"
+    local mapping_name = "Step Sequencer: Row " .. row_index .. " Step " .. s .. " Delay"
     pcall(function() renoise.tool():remove_midi_mapping(mapping_name) end)
     renoise.tool():add_midi_mapping{
       name = mapping_name,
@@ -1958,7 +2024,11 @@ local function create_delay_row(row_index, steps)
   track_delay_rows[row_index] = delay_row
   delay_row.visible = track_visibility[row_index].delay_visible
   
-  return delay_row
+  -- Wrap with vertical spacing
+  return vb:column{
+    spacing = 4,
+    delay_row
+  }
 end
 
 -- Get names of all instruments
@@ -2122,11 +2192,11 @@ function show_sequencer_dialog()
   -- Remove existing MIDI mappings to avoid duplicates
   -- Note: We can't remove all at once with a pattern, so we try to remove known ones
   for r = 1, 20 do  -- Remove up to 20 potential rows
-    pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Track Delay") end)
-    pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Track Note") end)
+    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Delay") end)
+    pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Track Note") end)
     for s = 1, 64 do
-      pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Step " .. s .. " Note") end)
-      pcall(function() renoise.tool():remove_midi_mapping("Requencer: Row " .. r .. " Step " .. s .. " Volume") end)
+      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Note") end)
+      pcall(function() renoise.tool():remove_midi_mapping("Step Sequencer: Row " .. r .. " Step " .. s .. " Volume") end)
     end
   end
   
@@ -2239,50 +2309,12 @@ function show_sequencer_dialog()
   end
 
   local controls_row = vb:row{
-    vb:text{ text = "Steps:" },
-    vb:popup{
-      id = "steps_dropdown",
-      items = num_steps_options,
-      value = find_steps_index(patternLength), -- Set the index that matches pattern length
-      notifier = function(index)
-        num_steps = tonumber(vb.views.steps_dropdown.items[index])
-        update_step_count(num_steps) -- this handles both sequencer rows and step indicators
-      end
-   
-    },
-    vb:text{ text = "Oct Range:" },
-    vb:popup{
-      id = "octave_range_dropdown",
-      items = {"1","2","3","4"},
-      value = math.max(1, math.min(4, global_octave_range)),
-      notifier = function(index)
-        global_octave_range = index
-        apply_global_note_constraints()
-      end
-    },
-    vb:text{ text = "Scale:" },
-    vb:popup{
-      id = "scale_mode_dropdown",
-      items = get_available_scales(),
-      value = 1,
-      notifier = function(index)
-        local items = vb.views.scale_mode_dropdown.items
-        global_scale_mode = items[index]
-        apply_global_note_constraints()
-      end
-    },
-    vb:text{ text = "Key:" },
-    vb:popup{
-      id = "scale_key_dropdown",
-      items = KEY_NAMES,
-      value = global_scale_key,
-      notifier = function(index)
-        global_scale_key = index
-        apply_global_note_constraints()
-      end
-    },
-   vb:button{
-      text = "Add Row",
+    -- Icon Buttons (left side)
+    vb:button{
+      text = "+",
+      width = cellSize,
+      height = cellSize,
+      tooltip = "Add Row",
       notifier = function()
         local song = renoise.song()
         
@@ -2350,7 +2382,10 @@ function show_sequencer_dialog()
       end
     },
     vb:button{
-      text = "Play/Stop",
+      text = "▶",
+      width = cellSize,
+      height = cellSize,
+      tooltip = "Play/Stop",
       notifier = function()
         local song = renoise.song()
         local current_line = song.transport.playback_pos.line
@@ -2364,18 +2399,76 @@ function show_sequencer_dialog()
        end
       end
     },
-              vb:button{
-       text = "Clear",
-       notifier = function()
-         clear_pattern_and_sequencer()
-       end
-     },
-     vb:button{
-       text = "Refresh Instruments",
-       notifier = function()
-         refresh_instrument_dropdowns()
-       end
-     },
+    vb:button{
+      text = "⌫",
+      width = cellSize,
+      height = cellSize,
+      tooltip = "Clear",
+      notifier = function()
+        clear_pattern_and_sequencer()
+      end
+    },
+    vb:button{
+      text = "⟳",
+      width = cellSize,
+      height = cellSize,
+      tooltip = "Refresh Instruments",
+      notifier = function()
+        refresh_instrument_dropdowns()
+      end
+    },
+    vb:button{
+      text = "⟲",
+      width = cellSize,
+      height = cellSize,
+      tooltip = "Sync Pattern to Sequencer",
+      notifier = function()
+        sync_pattern_to_sequencer()
+      end
+    },
+    -- Select Controls (right side)
+    vb:text{ text = "Steps:" },
+    vb:popup{
+      id = "steps_dropdown",
+      items = num_steps_options,
+      value = find_steps_index(patternLength), -- Set the index that matches pattern length
+      notifier = function(index)
+        num_steps = tonumber(vb.views.steps_dropdown.items[index])
+        update_step_count(num_steps) -- this handles both sequencer rows and step indicators
+      end
+   
+    },
+    vb:text{ text = "Oct Range:" },
+    vb:popup{
+      id = "octave_range_dropdown",
+      items = {"1","2","3","4"},
+      value = math.max(1, math.min(4, global_octave_range)),
+      notifier = function(index)
+        global_octave_range = index
+        apply_global_note_constraints()
+      end
+    },
+    vb:text{ text = "Scale:" },
+    vb:popup{
+      id = "scale_mode_dropdown",
+      items = get_available_scales(),
+      value = 1,
+      notifier = function(index)
+        local items = vb.views.scale_mode_dropdown.items
+        global_scale_mode = items[index]
+        apply_global_note_constraints()
+      end
+    },
+    vb:text{ text = "Key:" },
+    vb:popup{
+      id = "scale_key_dropdown",
+      items = KEY_NAMES,
+      value = global_scale_key,
+      notifier = function(index)
+        global_scale_key = index
+        apply_global_note_constraints()
+      end
+    },
   }
 
   -- Try to load sequencer from existing tracks, or create fresh session
@@ -2424,6 +2517,9 @@ function show_sequencer_dialog()
   end
   
   apply_global_note_constraints()
+  
+  -- Sync any existing notes from pattern to sequencer
+  sync_pattern_to_sequencer()
 
   -- Calculate dialog dimensions
   -- Base controls width: I(96) + C(24) + Chord(96) + TN(24) + TD(24) + TV(24) + N(24) + V(24) + D(24) = 360
@@ -2461,7 +2557,7 @@ function show_sequencer_dialog()
   end)
 
   -- Show dialog with calculated width
-  dialog = renoise.app():show_custom_dialog("Requencer", dialog_content, function()
+  dialog = renoise.app():show_custom_dialog("Step Sequencer", dialog_content, function()
     -- Dialog closed callback (optional)
   end)
   
@@ -2474,6 +2570,6 @@ function show_sequencer_dialog()
 end
 
 renoise.tool():add_menu_entry {
-  name = "Main Menu:Tools:Requencer",
+  name = "Main Menu:Tools:Step Sequencer",
   invoke = show_sequencer_dialog
 }

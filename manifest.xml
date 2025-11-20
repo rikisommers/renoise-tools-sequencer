@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <RenoiseScriptingTool>
+<<<<<<< HEAD
   <Name>Requencer</Name>
   <Id>com.rikis.requencer</Id>
   <Version>1.0</Version>
@@ -9,4 +10,15 @@
   <Category>Pattern, Sequencer, MIDI</Category>
   <Description>A step sequencer interface to generate pattern content</Description>
   <Homepage>https://github.com/rikisommers/renoise-tools-sequencer</Homepage>
+=======
+  <Name>Test</Name>
+  <Id>com.riki.test</Id>
+  <Version>1.2</Version>
+  <ApiVersion>6</ApiVersion>
+  <Author>Your Name</Author>
+  <AutoUpgraded>false</AutoUpgraded>
+  <Category>Tool</Category>
+  <Description>A custom step sequencer</Description>
+  <Homepage>http://yourwebsite.com</Homepage>
+>>>>>>> 1157b68 (ad sync)
 </RenoiseScriptingTool>
