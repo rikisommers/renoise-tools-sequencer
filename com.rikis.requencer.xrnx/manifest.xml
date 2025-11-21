@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RenoiseScriptingTool>
+  <Name>Requencer</Name>
+  <Id>com.rikis.requencer</Id>
+  <Version>1.0</Version>
+  <ApiVersion>6</ApiVersion>
+  <Author>Riki Sommers</Author>
+  <AutoUpgraded>false</AutoUpgraded>
+  <Category>Pattern, Sequencer, MIDI</Category>
+  <Description>A step sequencer interface to generate pattern content</Description>
+  <Homepage>https://github.com/rikisommers/renoise-tools-sequencer</Homepage>
+</RenoiseScriptingTool>
