@@ -1,15 +1,15 @@
 local vb = renoise.ViewBuilder()
 
 local control_margin = renoise.ViewBuilder.DEFAULT_CONTROL_MARGIN
-local control_spacing = renoise.ViewBuilder.DEFAULT_CONTROL_SPACING
+local control_spacing = 1
 local control_height = renoise.ViewBuilder.DEFAULT_CONTROL_HEIGHT
 local control_mini_height = renoise.ViewBuilder.DEFAULT_MINI_CONTROL_HEIGHT
 local dialog_margin = renoise.ViewBuilder.DEFAULT_DIALOG_MARGIN
 local dialog_spacing = renoise.ViewBuilder.DEFAULT_DIALOG_SPACING
 local button_height = renoise.ViewBuilder.DEFAULT_DIALOG_BUTTON_HEIGHT
-local section_spacing = 4  -- Spacing between major sections (controls, indicators, grid)
+local section_spacing = 8  -- Spacing between major sections (controls, indicators, grid)
 local row_spacing = 2  -- Spacing between sequencer rows
-local indicator_spacing = 1  -- Spacing between step indicators and first row
+local indicator_spacing = 2  -- Spacing between step indicators and first row
 
 local num_steps_options = {"8", "16", "32", "64"}
 local pattern = 1  -- Default pattern index
@@ -964,7 +964,8 @@ local function create_step_indicators(steps)
 
   
   local row = vb:row{
-    spacing = control_spacing
+    spacing = control_spacing,
+    margin = ROW_PADDING,
   }
   
   -- Add labels aligned with controls (new order)
@@ -1436,7 +1437,6 @@ local function create_step_row(row_index, steps)
   local actual_steps = math.min(steps, num_steps)
   local row = vb:row{
     spacing = control_spacing,
-    
       -- Instrument selector (first)
       vb:popup{
         id = "instrument_popup_" .. tostring(row_index),
@@ -1557,16 +1557,15 @@ local function create_step_row(row_index, steps)
         end
       },
       
-      -- Track Note rotary (wrapped for centered alignment)
-      vb:horizontal_aligner{
-        mode = "center",
-        width = cellSize,
+      -- Track Note rotary
+   
         vb:rotary{
           id = "note_rotary_" .. tostring(row_index),  -- Unique ID for note rotary
           min = 0,     -- 0% (C2)
           max = 100,   -- 100% (C4) 
           value = 50,  -- 50% (C3 default)
           width = cellSize,
+          height = cellSize,
 
           tooltip = "Track Note (base pitch for all steps)",
           notifier = function(value)
@@ -1656,8 +1655,7 @@ local function create_step_row(row_index, steps)
           
           print("Updated track " .. row_index .. " note from " .. old_track_note .. " to " .. new_note_value .. " (transposition: " .. transposition .. " semitones)")
         end
-        }
-      },
+        },
       
       -- Track Delay rotary
       vb:rotary{
@@ -1666,6 +1664,7 @@ local function create_step_row(row_index, steps)
         max = 100,   -- Maximum delay value
         value = 0,   -- Initialize with 0
         width = cellSize,
+        height = cellSize,
         tooltip = "Track Delay (-100ms to +100ms)",
         notifier = function(value)
           -- Update the track delay for the specific row
@@ -1687,6 +1686,7 @@ local function create_step_row(row_index, steps)
         max = 100,   -- 100% (full volume)
         value = 100, -- 100% default
         width = cellSize,
+        height = cellSize,
         tooltip = "Track Volume (master volume for all steps in this row)",
         notifier = function(value)
           -- Store track volume in sequencer data
@@ -1797,6 +1797,7 @@ local function create_step_row(row_index, steps)
   }
   
   
+
   -- Add 3-state buttons for each step (only create what we need)
   -- States: 0 = Off, 1 = Play, 2 = Stop
   for s = 1, actual_steps do
@@ -1892,6 +1893,7 @@ local function create_step_row(row_index, steps)
     text = "S",  -- Common Renoise phrase icon (double eighth notes)
     width = cellSize,
     height = cellSize,
+    color = {30, 30, 30},  -- Yellow/orange (Renoise button active color)
     tooltip = "Save row as phrase",
     notifier = function()
       save_row_as_phrase(row_index)
@@ -1903,6 +1905,8 @@ local function create_step_row(row_index, steps)
     font = "bold",
     width = cellSize,
     height = cellSize,
+    color = {30, 30, 30},  -- Yellow/orange (Renoise button active color)
+
     tooltip = "Clear pattern notes and reset row",
     notifier = function()
       remove_sequencer_row(row_index)
@@ -1923,22 +1927,29 @@ local function create_step_row(row_index, steps)
   return row
 end
 
+local function create_labels_row()
+  return vb:row{
+    spacing = control_spacing,
+    -- Add spacing to align with the step checkboxes (after all controls)
+    vb:text{width = cellSizeLg, height = cellSize, text = ""},  -- Instrument space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Chord toggle space
+    vb:text{width = cellSizeLg, height = cellSize, text = ""},  -- Chord selection space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track note space  
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track delay space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track volume space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Note toggle space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Volume toggle space
+    vb:text{width = cellSize, height = cellSize, text = ""},  -- Delay toggle space
+  }
+end
 -- Create a note row with rotary dials for each step
 local function create_note_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local note_row = vb:row{
-    spacing = control_spacing,
+    spacing = control_spacing + 6,
     -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, text = ""},  -- Instrument space
-    vb:text{width = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, text = ""},  -- Track note space  
-    vb:text{width = cellSize, text = ""},  -- Track delay space
-    vb:text{width = cellSize, text = ""},  -- Track volume space
-    vb:text{width = cellSize, text = ""},  -- Note toggle space
-    vb:text{width = cellSize, text = ""},  -- Volume toggle space
-    vb:text{width = cellSize, text = ""},  -- Delay toggle space
+    create_labels_row()
   }
   
   -- Initialize visibility state
@@ -1955,6 +1966,7 @@ local function create_note_row(row_index, steps)
       max = 100,   -- 100% (C4) 
       value = 50,  -- 50% (C3 default)
       width = cellSize,
+      height = cellSize,
       notifier = function(value)
         -- Convert percentage to constrained note using global range/scale
         local base_note_value = sequencer_data[row_index].base_note_value or 48
@@ -2016,17 +2028,9 @@ local function create_volume_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local volume_row = vb:row{
-    spacing = control_spacing,
-    -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, text = ""},  -- Instrument space
-    vb:text{width = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, text = ""},  -- Track note space
-    vb:text{width = cellSize, text = ""},  -- Track delay space
-    vb:text{width = cellSize, text = ""},  -- Track volume space
-    vb:text{width = cellSize, text = ""},  -- Note toggle space
-    vb:text{width = cellSize, text = ""},  -- Volume toggle space
-    vb:text{width = cellSize, text = ""},  -- Delay toggle space
+    spacing = control_spacing + 6,
+    create_labels_row()
+
   }
   
   -- Initialize visibility state
@@ -2043,6 +2047,7 @@ local function create_volume_row(row_index, steps)
       max = 100,   -- 100% (full volume) 
       value = 100, -- 100% (full volume default)
       width = cellSize,
+      height = cellSize,
       notifier = function(value)
         -- Convert percentage to MIDI volume value (0-127 range)
         local volume_value = math.floor((value / 100) * 127)
@@ -2096,17 +2101,10 @@ end
 local function create_delay_row(row_index, steps)
   local actual_steps = math.min(steps, num_steps)
   local delay_row = vb:row{
-    spacing = control_spacing,
-    -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, text = ""},  -- Instrument space
-    vb:text{width = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, text = ""},  -- Track note space
-    vb:text{width = cellSize, text = ""},  -- Track delay space
-    vb:text{width = cellSize, text = ""},  -- Track volume space
-    vb:text{width = cellSize, text = ""},  -- Note toggle space
-    vb:text{width = cellSize, text = ""},  -- Volume toggle space
-    vb:text{width = cellSize, text = ""},  -- Delay toggle space
+    spacing = control_spacing + 6,
+    
+    create_labels_row()
+
   }
   
   -- Initialize visibility state
@@ -2123,6 +2121,7 @@ local function create_delay_row(row_index, steps)
       max = 255,   -- 255 (maximum delay in hex) 
       value = 0,   -- 0 (no delay default)
       width = cellSize,
+      height = cellSize,
       notifier = function(value)
         -- Store per-step delay values
         if not sequencer_data[row_index].step_delays then
@@ -2180,7 +2179,6 @@ local function create_styled_row_group(row_index, steps)
   
   -- Group all parts of this row together in a column
   local row_group = vb:column{
-    spacing = 0,
     step_row,
     note_row,
     volume_row,
@@ -2189,8 +2187,8 @@ local function create_styled_row_group(row_index, steps)
   
   -- Wrap with styled panel container
   return vb:row{
-    style = "panel",
     margin = ROW_PADDING,
+    background = "group",
     row_group
   }
 end
@@ -2382,7 +2380,8 @@ function show_sequencer_dialog()
   -- Note: We keep sequencer_data and track_visibility to preserve user data
   
   step_grid_view = vb:column{
-    spacing = row_spacing  -- Spacing between sequencer rows
+    spacing = row_spacing,  -- Spacing between sequencer rows
+    background = "panel",
   }
   -- Create step indicators with maximum possible steps (64) so we can hide/show them
   step_indicators_row = create_step_indicators(64)  -- Create maximum, hide unused ones later
