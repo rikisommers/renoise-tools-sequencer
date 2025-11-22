@@ -1814,7 +1814,7 @@ local function create_step_row(row_index, steps)
     -- Helper function to get button appearance based on state
     local function get_button_appearance(state)
       -- Static color definitions
-      local button_off = {80, 80, 80}      -- Gray
+      local button_off = {40, 40, 40}      -- Gray
       local button_play = {147, 245, 66}      -- Green
       local button_stop = {245, 66, 93}      -- Red
       
@@ -2381,7 +2381,7 @@ function show_sequencer_dialog()
   
   step_grid_view = vb:column{
     spacing = row_spacing,  -- Spacing between sequencer rows
-    background = "panel",
+    background = "plain",
   }
   -- Create step indicators with maximum possible steps (64) so we can hide/show them
   step_indicators_row = create_step_indicators(64)  -- Create maximum, hide unused ones later
@@ -2734,7 +2734,7 @@ function show_sequencer_dialog()
   end)
 
   -- Show dialog with calculated width
-  dialog = renoise.app():show_custom_dialog("Step Sequencer", dialog_content, function()
+  dialog = renoise.app():show_custom_dialog("Requencer", dialog_content, function()
     -- Dialog closed callback (optional)
   end)
   
