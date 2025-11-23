@@ -380,6 +380,16 @@ local function toggle_delay_row_visibility(row_index)
     track_delay_rows[row_index].visible = not is_visible
   end
   
+  -- Enable/disable track delay column when delay row is enabled/disabled
+  local track_index = get_track_index_for_row(row_index)
+  local song = renoise.song()
+  if track_index <= #song.tracks then
+    local track = song.tracks[track_index]
+    if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
+      track.delay_column_visible = not is_visible  -- Enable when row becomes visible
+    end
+  end
+  
   -- Update button color
   local toggle_id = "delay_toggle_" .. tostring(row_index)
   if vb.views[toggle_id] then
@@ -701,6 +711,9 @@ local function load_sequencer_from_pattern()
     local track = track_info.track
     local pattern_track = pattern:track(track_index)
     
+    -- Set track delay to 0 as default
+    track.output_delay = 0
+    
     -- Initialize row data
     sequencer_data[row_idx] = {
       instrument = 1,
@@ -811,6 +824,7 @@ local function setup_default_track_group()
     local track = song.tracks[insert_pos]
     track.name = "Sequencer_" .. instrument_name
     track.color = {0x60, 0xC0, 0xFF}  -- Blue color for visual grouping
+    track.output_delay = 0  -- Set track delay to 0 as default
     
     -- Map this row to the track position (simple and stable!)
     track_mapping[i] = insert_pos
@@ -1037,6 +1051,14 @@ local function update_step_delay_in_pattern(row_index, step, delay_value)
     local song = renoise.song()
     local current_pattern_index = song.selected_pattern_index
     local pattern = song:pattern(current_pattern_index)
+
+    -- Enable delay column on the track so delay values can be applied
+    if track_index <= #song.tracks then
+      local track = song.tracks[track_index]
+      if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
+        track.delay_column_visible = true
+      end
+    end
 
     -- Update all occurrences of this step in the pattern
     for line_index = step, pattern.number_of_lines, num_steps do
@@ -1988,6 +2010,14 @@ local function create_note_row(row_index, steps)
         local step_state = sequencer_data[row_index].step_states and sequencer_data[row_index].step_states[s]
         if not is_syncing_pattern and step_state and step_state > 0 then
           update_step_note_in_pattern(row_index, s, note_value)
+          
+          -- Update step button text to show the note value (only for Play state)
+          if step_state == 1 then
+            local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
+            if vb.views[button_id] then
+              vb.views[button_id].text = note_value_to_string(note_value)
+            end
+          end
         end
         
         print("Set step " .. s .. " note to " .. note_value .. " for row " .. row_index)
@@ -2509,6 +2539,7 @@ function show_sequencer_dialog()
         local track = song.tracks[insert_pos]
         track.name = "Sequencer_" .. instrument_name
         track.color = {0x60, 0xC0, 0xFF}  -- Blue color
+        track.output_delay = 0  -- Set track delay to 0 as default
         
         -- Update row index and mapping
         local new_row_index = #sequencer_data + 1
@@ -2750,6 +2781,6 @@ function show_sequencer_dialog()
 end
 
 renoise.tool():add_menu_entry {
-  name = "Main Menu:Tools:Step Sequencer",
+  name = "Main Menu:Tools:Requencer",
   invoke = show_sequencer_dialog
 }
