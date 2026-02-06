@@ -1,3 +1,6 @@
+---@diagnostic disable: undefined-global
+-- Renoise API provides the 'renoise' global at runtime
+
 local vb = renoise.ViewBuilder()
 
 local control_margin = renoise.ViewBuilder.DEFAULT_CONTROL_MARGIN
@@ -203,26 +206,16 @@ end
 -- Ultra-compact format for 24px button display with fixed width padding
 local function note_value_to_string(note_value)
   if note_value >= 121 or note_value < 0 then
-    return "   "  -- Three spaces for invalid notes to maintain uniform width
+    return "--"  -- Two dashes for uniform 2-char width
   end
   
-  -- Use very compact notation
   local note_names = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
   local octave = math.floor(note_value / 12)
   local note_index = (note_value % 12) + 1
+  local note_name = note_names[note_index]
   
-  -- Format: "C4" or "C#4" (2-3 chars max)
-  local note_str = note_names[note_index] .. octave
-  
-  -- Pad to 3 characters for uniform width (right-align with space padding)
-  while #note_str < 3 do
-    note_str = " " .. note_str  -- Left-pad with space
-  end
-  
-  -- Ensure string is exactly 3 characters
-  if #note_str > 3 then
-    note_str = string.sub(note_str, 1, 3)
-  end
+  -- Format: "C4", "D#3", etc.
+  local note_str = note_name .. octave
   
   return note_str
 end
@@ -524,8 +517,9 @@ local function remove_sequencer_row(row_index)
   for s = 1, num_steps do
     local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
     if vb.views[button_id] then
-      vb.views[button_id].text = "   "
+      vb.views[button_id].text = "--"
       vb.views[button_id].color = {80, 80, 80}  -- Gray for Off
+      vb.views[button_id].width = cellSize  -- Force fixed width
     end
   end
   
@@ -910,7 +904,7 @@ local function save_row_as_phrase(row_index)
   
   -- Set phrase properties
   new_phrase.number_of_lines = num_steps
-  new_phrase.lpb = 1  -- Lines per beat - 1 means each line is a step
+  new_phrase.lpb = song.transport.lpb  -- Match phrase speed to song LPB
   
   -- Get delay values from the UI controls
   local track_delay = 0
@@ -999,8 +993,8 @@ local function create_step_indicators(steps)
       height = cellSize,
       text = "   ",  -- Three spaces to maintain uniform width
       color = (step % 4 == 1) and BLOCK_START_COLOR or INACTIVE_COLOR,
-      active = false,
-      font = "mono"  -- Monospace font for consistency
+      active = false
+      -- Note: 'font' property not supported for buttons in Renoise 3.4 API
     }
     row:add_child(indicator)
     table.insert(step_indicators, indicator)
@@ -1328,8 +1322,9 @@ local function clear_pattern_and_sequencer()
       -- Clear the UI button
       local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step_index)
       if vb.views[button_id] then
-        vb.views[button_id].text = "   "
+        vb.views[button_id].text = "--"
         vb.views[button_id].color = {80, 80, 80}  -- Gray for Off
+        vb.views[button_id].width = cellSize  -- Force fixed width
       end
     end
   end
@@ -1388,6 +1383,7 @@ local function sync_pattern_to_sequencer()
           if vb.views[button_id] then
               vb.views[button_id].text = note_value_to_string(note_column.note_value)
               vb.views[button_id].color = {147, 245, 66}  -- Green for Play
+              vb.views[button_id].width = cellSize  -- Force fixed width
           end
           
           -- Update step note rotary
@@ -1420,8 +1416,9 @@ local function sync_pattern_to_sequencer()
             -- Update UI button
             local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step)
             if vb.views[button_id] then
-              vb.views[button_id].text = "   "
+              vb.views[button_id].text = "--"
               vb.views[button_id].color = {80, 80, 80}  -- Gray for Off
+              vb.views[button_id].width = cellSize  -- Force fixed width
             end
             
             -- Clear this step from the entire pattern
@@ -1636,6 +1633,7 @@ local function create_step_row(row_index, steps)
               local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step_index)
               if vb.views[button_id] and sequencer_data[row_index].step_states[step_index] == 1 then
                 vb.views[button_id].text = note_value_to_string(new_step_note)
+                vb.views[button_id].width = cellSize  -- Force fixed width
               end
               
               print("Step " .. step_index .. ": old_step=" .. old_step_note .. ", offset=" .. step_offset .. ", new_step=" .. new_step_note)
@@ -1662,6 +1660,7 @@ local function create_step_row(row_index, steps)
                     local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
                     if vb.views[button_id] then
                       vb.views[button_id].text = note_value_to_string(new_note_value)
+                      vb.views[button_id].width = cellSize  -- Force fixed width
                     end
                   end
                   update_step_note_in_pattern(row_index, s, note_to_use)
@@ -1841,11 +1840,11 @@ local function create_step_row(row_index, steps)
       local button_stop = {245, 66, 93}      -- Red
       
       if state == 0 then
-        return "   ", button_off  -- Off: gray, 3 spaces for uniform width
+        return "--", button_off  -- Off: gray
       elseif state == 1 then
-        return " ▶ ", button_play  -- Play: green, play symbol with padding
+        return "▶", button_play  -- Play: green
       elseif state == 2 then
-        return " ■ ", button_stop  -- Stop: red, stop symbol with padding
+        return "■", button_stop  -- Stop: red
       end
     end
     
@@ -1857,7 +1856,7 @@ local function create_step_row(row_index, steps)
       color = initial_color,
       width = cellSize,
       height = cellSize,
-      font = "mono",  -- Use monospace font for consistent width
+      -- Note: 'font' property not supported for buttons in Renoise 3.4 API
       notifier = function()
         -- Cycle through states: 0 -> 1 -> 2 -> 0
         local current_state = sequencer_data[row_index].step_states[s]
@@ -1869,6 +1868,7 @@ local function create_step_row(row_index, steps)
         if vb.views[button_id] then
           vb.views[button_id].text = new_text
           vb.views[button_id].color = new_color
+          vb.views[button_id].width = cellSize  -- Force fixed width
         end
         
         print("Step state changed:")
@@ -1881,9 +1881,14 @@ local function create_step_row(row_index, steps)
           -- Off: clear note from pattern
           update_note_in_pattern(row_index, s, false)
         elseif new_state == 1 then
-          -- Play: add note to pattern
+          -- Play: add note to pattern and show note value on button
           local note_to_use = sequencer_data[row_index].step_notes and sequencer_data[row_index].step_notes[s] or sequencer_data[row_index].note_value
           update_step_note_in_pattern(row_index, s, note_to_use)
+          -- Update button text to show the note value
+          if vb.views[button_id] then
+            vb.views[button_id].text = note_value_to_string(note_to_use)
+            vb.views[button_id].width = cellSize  -- Force fixed width after text change
+          end
         elseif new_state == 2 then
           -- Stop: clear any existing note first, then set volume to 0
           update_note_in_pattern(row_index, s, false)
@@ -1924,7 +1929,7 @@ local function create_step_row(row_index, steps)
   
   row:add_child(vb:button{
     text = "↩",  -- Backspace icon
-    font = "bold",
+    -- Note: 'font' property not supported for buttons in Renoise 3.4 API
     width = cellSize,
     height = cellSize,
     color = {30, 30, 30},  -- Yellow/orange (Renoise button active color)
@@ -1951,17 +1956,14 @@ end
 
 local function create_labels_row()
   return vb:row{
-    spacing = control_spacing,
-    -- Add spacing to align with the step checkboxes (after all controls)
-    vb:text{width = cellSizeLg, height = cellSize, text = ""},  -- Instrument space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Chord toggle space
-    vb:text{width = cellSizeLg, height = cellSize, text = ""},  -- Chord selection space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track note space  
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track delay space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Track volume space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Note toggle space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Volume toggle space
-    vb:text{width = cellSize, height = cellSize, text = ""},  -- Delay toggle space
+    spacing = 0,  -- No internal spacing to match exact control widths
+    -- Create a single spacer that matches the entire control section width
+    vb:text{
+      width = cellSizeLg + cellSize + cellSizeLg + (cellSize * 6) + 6,  
+      -- Total: 96 + 24 + 96 + 144 + 8 (spacing) = 368px
+      height = cellSize, 
+      text = ""
+    }
   }
 end
 -- Create a note row with rotary dials for each step
@@ -1969,7 +1971,7 @@ local function create_note_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local note_row = vb:row{
-    spacing = control_spacing + 6,
+    spacing = control_spacing,  -- Match step button spacing for alignment
     -- Add spacing to align with the step checkboxes (after all controls)
     create_labels_row()
   }
@@ -1982,13 +1984,18 @@ local function create_note_row(row_index, steps)
   -- Add rotary dials for each step (only create what we need)
   for s = 1, actual_steps do
     local rotary_id = "step_note_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    note_row:add_child(vb:rotary{
-      id = rotary_id,
-      min = 0,     -- 0% (C2)
-      max = 100,   -- 100% (C4) 
-      value = 50,  -- 50% (C3 default)
-      width = cellSize,
-      height = cellSize,
+    -- Wrap rotary with spacers for proper alignment
+    note_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      -- vb:space{ width = 0 },  -- Left spacer
+      vb:rotary{
+        id = rotary_id,
+        min = 0,     -- 0% (C2)
+        max = 100,   -- 100% (C4) 
+        value = 50,  -- 50% (C3 default)
+        width = cellSize,
+        height = cellSize,
       notifier = function(value)
         -- Convert percentage to constrained note using global range/scale
         local base_note_value = sequencer_data[row_index].base_note_value or 48
@@ -2006,22 +2013,28 @@ local function create_note_row(row_index, steps)
           vb.views[rotary_id].value = constrained_percentage
         end
         
+        -- Always update the step button text when note changes
+        local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
+        local step_state = 0
+        if sequencer_data[row_index] and sequencer_data[row_index].step_states then
+          step_state = sequencer_data[row_index].step_states[s] or 0
+        end
+        
+        if step_state == 1 and vb.views[button_id] then
+          vb.views[button_id].text = note_value_to_string(note_value)
+          vb.views[button_id].width = cellSize  -- Force fixed width
+          print("Updated button " .. button_id .. " text to " .. note_value_to_string(note_value))
+        end
+        
         -- Update pattern with specific note for this step (only if step is active)
-        local step_state = sequencer_data[row_index].step_states and sequencer_data[row_index].step_states[s]
-        if not is_syncing_pattern and step_state and step_state > 0 then
+        if not is_syncing_pattern and step_state > 0 then
           update_step_note_in_pattern(row_index, s, note_value)
-          
-          -- Update step button text to show the note value (only for Play state)
-          if step_state == 1 then
-            local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
-            if vb.views[button_id] then
-              vb.views[button_id].text = note_value_to_string(note_value)
-            end
-          end
         end
         
         print("Set step " .. s .. " note to " .. note_value .. " for row " .. row_index)
       end
+      },
+      -- vb:space{ width = 1 }  -- Right spacer
     })
     
     -- Add MIDI mapping for this rotary  
@@ -2058,7 +2071,7 @@ local function create_volume_row(row_index, steps)
   -- Use actual steps parameter instead of creating 64 and hiding
   local actual_steps = math.min(steps, num_steps)
   local volume_row = vb:row{
-    spacing = control_spacing + 6,
+    spacing = control_spacing,  -- Match step button spacing for alignment
     create_labels_row()
 
   }
@@ -2071,14 +2084,19 @@ local function create_volume_row(row_index, steps)
   -- Add rotary dials for each step volume (only create what we need)
   for s = 1, actual_steps do
     local rotary_id = "step_volume_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    volume_row:add_child(vb:rotary{
-      id = rotary_id,
-      min = 0,     -- 0% (silent)
-      max = 100,   -- 100% (full volume) 
-      value = 100, -- 100% (full volume default)
-      width = cellSize,
-      height = cellSize,
-      notifier = function(value)
+    -- Wrap rotary with spacers for proper alignment
+    volume_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      -- vb:space{ width = 0 },  -- Left spacer
+      vb:rotary{
+        id = rotary_id,
+        min = 0,     -- 0% (silent)
+        max = 100,   -- 100% (full volume) 
+        value = 100, -- 100% (full volume default)
+        width = cellSize,
+        height = cellSize,
+        notifier = function(value)
         -- Convert percentage to MIDI volume value (0-127 range)
         local volume_value = math.floor((value / 100) * 127)
         
@@ -2096,6 +2114,8 @@ local function create_volume_row(row_index, steps)
         
         print("Set step " .. s .. " volume to " .. volume_value .. " for row " .. row_index)
       end
+      },
+      -- vb:space{ width = 1 }  -- Right spacer
     })
     
     -- Add MIDI mapping for this volume rotary  
@@ -2131,7 +2151,7 @@ end
 local function create_delay_row(row_index, steps)
   local actual_steps = math.min(steps, num_steps)
   local delay_row = vb:row{
-    spacing = control_spacing + 6,
+    spacing = control_spacing,  -- Match step button spacing for alignment
     
     create_labels_row()
 
@@ -2145,13 +2165,18 @@ local function create_delay_row(row_index, steps)
   -- Add rotary dials for each step delay (only create what we need)
   for s = 1, actual_steps do
     local rotary_id = "step_delay_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    delay_row:add_child(vb:rotary{
-      id = rotary_id,
-      min = 0,     -- 0 (no delay)
-      max = 255,   -- 255 (maximum delay in hex) 
-      value = 0,   -- 0 (no delay default)
-      width = cellSize,
-      height = cellSize,
+    -- Wrap rotary with spacers for proper alignment
+    delay_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      -- vb:space{ width = 0 },  -- Left spacer
+      vb:rotary{
+        id = rotary_id,
+        min = 0,     -- 0 (no delay)
+        max = 255,   -- 255 (maximum delay in hex) 
+        value = 0,   -- 0 (no delay default)
+        width = cellSize,
+        height = cellSize,
       notifier = function(value)
         -- Store per-step delay values
         if not sequencer_data[row_index].step_delays then
@@ -2167,6 +2192,8 @@ local function create_delay_row(row_index, steps)
         
         print("Set step " .. s .. " delay to " .. math.floor(value) .. " for row " .. row_index)
       end
+      },
+      -- vb:space{ width = 1 }  -- Right spacer
     })
     
     -- Add MIDI mapping for this delay rotary  
@@ -2218,7 +2245,7 @@ local function create_styled_row_group(row_index, steps)
   -- Wrap with styled panel container
   return vb:row{
     margin = ROW_PADDING,
-    background = "group",
+    style = "group",  -- Use 'style' property, not 'background'
     row_group
   }
 end
@@ -2342,28 +2369,17 @@ end
 ----------------------------------------------------------PLAYBACK
 
 
--- Trigger notes for active steps
-local function trigger_notes()
-  for row, data in ipairs(sequencer_data) do
-    if data.step_states and data.step_states[current_step] and data.step_states[current_step] > 0 then
-      local instrument = renoise.song().instruments[data.instrument]
-      local track = renoise.song().tracks[row]
-      local note = renoise.song().transport.edit_step
-      instrument:trigger_note(note, 100, track.name)
-    end
-  end
-   -- update_step_indicators()
-end
-
-
--- Handle playback
-local function handle_playback()
-  if is_playing then
-    trigger_notes()
-    current_step = current_step % num_steps + 1
-    renoise.tool().app:defer(handle_playback)
-  end
-end
+-- OBSOLETE: These functions are no longer used
+-- The sequencer now works by writing notes to the pattern,
+-- and Renoise's playback engine handles triggering them.
+-- Pattern notes are written via the step buttons and updated dynamically.
+--
+-- Old implementation attempted to trigger notes programmatically
+-- using deprecated API methods (instrument:trigger_note() and renoise.tool().app:defer())
+-- which are not part of the Renoise 3.4 API.
+--
+-- Playback tracking is now handled via update_step_indicators()
+-- which is called from the app_idle_observable notifier.
 
 
 
@@ -2411,7 +2427,7 @@ function show_sequencer_dialog()
   
   step_grid_view = vb:column{
     spacing = row_spacing,  -- Spacing between sequencer rows
-    background = "plain",
+    style = "plain",  -- Use 'style' property, not 'background'
   }
   -- Create step indicators with maximum possible steps (64) so we can hide/show them
   step_indicators_row = create_step_indicators(64)  -- Create maximum, hide unused ones later
@@ -2597,7 +2613,7 @@ function show_sequencer_dialog()
     },
     vb:button{
       text = "↩",
-      font = "bold",
+      -- Note: 'font' property not supported for buttons in Renoise 3.4 API
       width = cellSize,
       height = cellSize,
       tooltip = "Clear",
@@ -2615,7 +2631,7 @@ function show_sequencer_dialog()
     },
     vb:button{
       text = "Sync Pattern",
-      font = "mono",
+      -- Note: 'font' property not supported for buttons in Renoise 3.4 API
       width = cellSize,
       height = cellSize,
       tooltip = "Sync Pattern to Sequencer data",

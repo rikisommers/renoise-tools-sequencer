@@ -1,13 +1,12 @@
-<?xml version="1.01" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <RenoiseScriptingTool>
-  <Name>requencer</Name>
+  <Name>Requencer</Name>
   <Id>com.rikis.requencer</Id>
-  <ApiVersion>6.2</ApiVersion>
   <Version>1.01</Version>
-  <ApiVersion>6.2</ApiVersion>
-  <Author>RLS</Author>
+  <ApiVersion>6.1</ApiVersion>
+  <Author>Riki Sommers</Author>
   <AutoUpgraded>false</AutoUpgraded>
-  <Category>Workflow, MIDI, Pattern, Phrase, Sequencer</Category>
-  <Description>A step sequencer interface to generate pattern and phrase data</Description>
+  <Category>Pattern, Sequencer, MIDI</Category>
+  <Description>A step sequencer interface to generate pattern content</Description>
   <Homepage>https://github.com/rikisommers/renoise-tools-sequencer</Homepage>
 </RenoiseScriptingTool>
