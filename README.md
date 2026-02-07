@@ -11,7 +11,7 @@ This provides similar functionality to Paketti Groovebox 8120 but with more fine
 
 ### Drum Programming
 One of my main goals in making this was to allow for more humanized programming of drums.
-When programming drums I often add delay to individual tracks and notes to create a 'groove' effect. This has a more human feel than the global groove which produces a very noticeable rhythm which is great for garage-esque sway but not so great for more subtle effects.
+When programming drums I often add delay to individual tracks and notes to create a 'groove' effect. This allows for a more human feel rather than the global groove which produces a very noticeable garage-esque swing but not so great for more subtle effects.
 Note offset can be applied per track and per individual step.
 
 ### Chord Programming
