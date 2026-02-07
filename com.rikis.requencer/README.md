@@ -14,7 +14,7 @@ One of my main goals in making this was to allow for more humanized programming 
 When programming drums I often add delay to individual tracks and notes to create a 'groove' effect. This allows for a more human feel rather than the global groove which produces a very noticeable garage-esque swing but not so great for more subtle effects.
 Note offset can be applied per track and per individual step.
 
-### Chord Programming
+### Melodic & Chord Programming
 Chord mode can be enabled per track to allow for more complex chord progressions.
 Chord types: Major, Minor, Diminished, Augmented, 7th chords, Sus2, Sus4
 Automatic note column expansion for chord voicings.
@@ -22,13 +22,13 @@ Automatic note column expansion for chord voicings.
 ### External Hardware
 I also wanted to be able to control steps via hardware similar to an analog step sequencer.
 All steps including the base note, volume and delay can be controlled via MIDI.
-This means you can turn any boolean or rotary MIDI controller into a step sequencer via Renoise.
+This allows you to turn any boolean or rotary MIDI controller into a step sequencer via Renoise.
 I have tested using a BCR2000 and it works great for controlling external synths with some one-time MIDI config required.
 Note that it does pay to save your MIDI config as a preset to avoid having to reconfigure your hardware every time you start Renoise.
 
-### Exploratory Programming
+### Workflow
 Save sequences as phrases and use them in other patterns or as a standalone instrument.
-Seaquenbces can also be loaded from the pattern via pattern sync.
+Sequences can also be loaded from the pattern via pattern sync.
 So if you save your sequence as a phrase you can load it back into the pattern via pattern sync later.
 
 ## Similar tools
