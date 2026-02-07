@@ -2,7 +2,7 @@
 <RenoiseScriptingTool>
   <Name>Requencer</Name>
   <Id>com.rikis.requencer</Id>
-  <Version>1.01</Version>
+  <Version>1.02</Version>
   <ApiVersion>6.1</ApiVersion>
   <Author>Riki Sommers</Author>
   <AutoUpgraded>false</AutoUpgraded>
