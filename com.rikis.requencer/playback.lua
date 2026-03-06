@@ -46,22 +46,6 @@ function Playback.update_play_button()
 end
 
 ---------------------------------------------------------------
--- Notifier setup
----------------------------------------------------------------
-
---- Register an app_new_document notifier that watches playback position.
-function Playback.setup_line_change_notifier()
-  renoise.tool().app_new_document_observable:add_notifier(function()
-    local song = renoise.song()
-    song.transport.playback_pos_observable:add_notifier(function()
-      if song.transport.playing then
-        Playback.update_step_indicators()
-      end
-    end)
-  end)
-end
-
----------------------------------------------------------------
 -- Note triggering (legacy internal playback)
 ---------------------------------------------------------------
 

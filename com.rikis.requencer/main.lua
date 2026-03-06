@@ -27,6 +27,9 @@ local function find_steps_index(pattern_length)
   return 1
 end
 
+-- Forward declarations
+local show_sequencer_dialog
+
 ---------------------------------------------------------------
 -- Update step count (rebuilds UI rows)
 ---------------------------------------------------------------
@@ -56,29 +59,26 @@ local function update_step_count(new_steps)
       local old_states  = row.step_states  or {}
       local old_notes   = row.step_notes   or {}
       local old_volumes = row.step_volumes or {}
+      local old_delays  = row.step_delays  or {}
 
       row.step_states  = {}
       row.step_notes   = {}
       row.step_volumes = {}
+      row.step_delays  = {}
 
       for s = 1, new_steps do
         row.step_states[s] = old_states[s] or 0
         if old_notes[s]   then row.step_notes[s]   = old_notes[s]   end
         if old_volumes[s]  then row.step_volumes[s]  = old_volumes[s]  end
+        if old_delays[s]   then row.step_delays[s]   = old_delays[s]   end
       end
     end
   end
 
-  -- Rebuild grid UI
-  State.step_grid_view:clear()
-  for r = 1, #State.sequencer_data do
-    if State.sequencer_data[r] then
-      State.step_grid_view:add_child(UIBuilder.create_styled_row_group(r, new_steps))
-    end
-  end
-
+  -- Write preserved data to pattern, then reopen dialog with fresh ViewBuilder
+  PatternWriter.write_sequencer_to_pattern()
   print("Updated sequencer to " .. new_steps .. " steps")
-  TrackManager.apply_global_note_constraints()
+  show_sequencer_dialog()
 end
 
 ---------------------------------------------------------------
@@ -114,7 +114,9 @@ local function add_sequencer_row()
 
   print("Row " .. new_idx .. " -> Track " .. insert_pos .. " (" .. instrument_name .. ")")
 
-  State.step_grid_view:add_child(UIBuilder.create_styled_row_group(new_idx, State.num_steps))
+  local child = UIBuilder.create_styled_row_group(new_idx, State.num_steps)
+  State.step_grid_view:add_child(child)
+  table.insert(State.step_grid_children, child)
   TrackManager.apply_global_note_constraints()
 
   song.selected_track_index = insert_pos
@@ -124,7 +126,7 @@ end
 -- Main dialog
 ---------------------------------------------------------------
 
-local function show_sequencer_dialog()
+show_sequencer_dialog = function()
   -- Close existing dialog
   if State.dialog and State.dialog.visible then
     State.dialog:close()
@@ -148,6 +150,7 @@ local function show_sequencer_dialog()
   -- Clear UI references (preserve nothing)
   State.step_indicators     = {}
   State.step_grid_view      = nil
+  State.step_grid_children  = {}
   State.step_indicators_row = nil
   State.track_note_rows     = {}
   State.track_volume_rows   = {}
@@ -167,7 +170,6 @@ local function show_sequencer_dialog()
     end
   end
 
-  Playback.setup_line_change_notifier()
   Playback.update_step_indicators()
 
   --------------- Controls row ---------------
@@ -212,7 +214,7 @@ local function show_sequencer_dialog()
       id = "steps_dropdown",
       items = Constants.NUM_STEPS_OPTIONS,
       height = Constants.CELL_SIZE, width = Constants.CELL_SIZE * 2,
-      value = find_steps_index(Constants.DEFAULT_PATTERN_LENGTH),
+      value = find_steps_index(State.num_steps),
       notifier = function(index)
         State.num_steps = tonumber(vb.views.steps_dropdown.items[index])
         update_step_count(State.num_steps)
@@ -279,7 +281,9 @@ local function show_sequencer_dialog()
         State.track_visibility[r] = {note_visible = false, volume_visible = false, delay_visible = false}
       end
       if not row.step_delays then row.step_delays = {} end
-      State.step_grid_view:add_child(UIBuilder.create_styled_row_group(r, State.num_steps))
+      local child = UIBuilder.create_styled_row_group(r, State.num_steps)
+      State.step_grid_view:add_child(child)
+      table.insert(State.step_grid_children, child)
     end
   end
 
@@ -301,16 +305,26 @@ local function show_sequencer_dialog()
   }
 
   --------------- Notifiers ---------------
-  renoise.tool().app_idle_observable:add_notifier(function()
+  -- Remove previous notifiers to prevent accumulation
+  if State.idle_notifier then
+    pcall(function() renoise.tool().app_idle_observable:remove_notifier(State.idle_notifier) end)
+  end
+  if State.playing_notifier then
+    pcall(function() renoise.song().transport.playing_observable:remove_notifier(State.playing_notifier) end)
+  end
+
+  State.idle_notifier = function()
     if renoise.song().transport.playing then
       Playback.update_step_indicators()
     end
-  end)
+  end
+  renoise.tool().app_idle_observable:add_notifier(State.idle_notifier)
 
-  renoise.song().transport.playing_observable:add_notifier(function()
+  State.playing_notifier = function()
     Playback.update_step_indicators()
     Playback.update_play_button()
-  end)
+  end
+  renoise.song().transport.playing_observable:add_notifier(State.playing_notifier)
 
   --------------- Show dialog ---------------
   State.dialog = renoise.app():show_custom_dialog("Requencer", dialog_content, function() end)

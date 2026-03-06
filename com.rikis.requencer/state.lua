@@ -39,6 +39,7 @@ State.track_visibility = {}
 -- UI view references (populated by ui_builder after ViewBuilder creation)
 State.step_indicators  = {}
 State.step_grid_view   = nil
+State.step_grid_children = {}
 State.step_indicators_row = nil
 State.track_note_rows   = {}
 State.track_volume_rows = {}
@@ -52,6 +53,10 @@ State.vb = nil
 
 -- Observable notifier reference for instrument list changes
 State.instruments_notifier = nil
+
+-- Notifier references for idle and playing observables
+State.idle_notifier    = nil
+State.playing_notifier = nil
 
 -- Callback: show_sequencer_dialog (set by main.lua so track_manager can reopen)
 State.show_sequencer_dialog = nil
@@ -128,6 +133,7 @@ function State:reset()
   self.track_visibility  = {}
   self.step_indicators   = {}
   self.step_grid_view    = nil
+  self.step_grid_children = {}
   self.step_indicators_row = nil
   self.track_note_rows   = {}
   self.track_volume_rows = {}
@@ -135,6 +141,8 @@ function State:reset()
   self.dialog            = nil
   self.vb               = nil
   self.instruments_notifier = nil
+  self.idle_notifier        = nil
+  self.playing_notifier     = nil
 
   for k, v in pairs(DEFAULTS) do
     self[k] = v
