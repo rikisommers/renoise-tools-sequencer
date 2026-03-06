@@ -90,6 +90,12 @@ I would recommend having a look at [Paketti Groovebox 8120](https://www.perplexi
 Access the tool from Renoise menu: **Tools → Requencer**
 
 
-## Bugs
-There are a few bugs that I am aware of and will be fixed in the future.
-If you find any bugs, please let me know. 
+# Requencer Patch Notes — v1.03
+
+## Bug Fixes
+
+- Fixed crash when changing step count (was calling non-existent clear() on grid view)
+- Fixed notifiers stacking on every dialog open, causing slowdowns over time
+- Fixed step delays being lost when changing the number of steps
+- Fixed step count dropdown resetting to 16 after deleting a track
+- Removed broken playback_pos_observable reference that caused errors on tool load
