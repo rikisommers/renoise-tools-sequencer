@@ -35,16 +35,4 @@ function Playback.update_play_button()
   end
 end
 
--- Set up line change notifier for step indicator updates
-function Playback.setup_line_change_notifier()
-  renoise.tool().app_new_document_observable:add_notifier(function()
-    local song = renoise.song()
-    song.transport.playback_pos_observable:add_notifier(function()
-      if song.transport.playing then
-        Playback.update_step_indicators()
-      end
-    end)
-  end)
-end
-
 return Playback

@@ -34,6 +34,11 @@ local State = {
 
   -- Observable notifier references
   instruments_notifier = nil,
+  idle_notifier = nil,
+  playing_notifier = nil,
+
+  -- Tracked child views of step_grid_view (for manual clear without clear())
+  grid_children = {},
 
   -- Callback set by main.lua to allow track_manager to reopen dialog
   show_sequencer_dialog = nil,
@@ -65,6 +70,7 @@ function State:reset_ui()
   self.track_note_rows = {}
   self.track_volume_rows = {}
   self.track_delay_rows = {}
+  self.grid_children = {}
 end
 
 -- Full reset of all data for a new session
