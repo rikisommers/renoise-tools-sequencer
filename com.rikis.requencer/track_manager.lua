@@ -292,8 +292,78 @@ end
 
 local function ensure_visibility(row_index)
   if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
+    State.track_visibility[row_index] = State.create_default_visibility()
   end
+end
+
+-- Toggle piano roll visibility for a given sequencer row
+function TrackManager.toggle_piano_roll_visibility(row_index)
+  local vb  = State.vb
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+
+  row.piano_roll_visible = not row.piano_roll_visible
+
+  if State.track_piano_roll_rows[row_index] then
+    State.track_piano_roll_rows[row_index].visible = row.piano_roll_visible
+  end
+
+  local toggle_id = "piano_roll_toggle_" .. tostring(row_index)
+  if vb and vb.views[toggle_id] then
+    vb.views[toggle_id].color = row.piano_roll_visible and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
+  end
+
+  if row.piano_roll_visible then
+    local PianoRoll = require("piano_roll")
+    PianoRoll.update_display(row_index)
+  end
+
+  print("Piano roll " .. row_index .. " visibility: " .. tostring(row.piano_roll_visible))
+end
+
+-- Toggle arp enabled for a given sequencer row
+function TrackManager.toggle_arp_enabled(row_index)
+  local vb  = State.vb
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+
+  row.arp_enabled = not row.arp_enabled
+
+  local toggle_id = "arp_toggle_" .. tostring(row_index)
+  if vb and vb.views[toggle_id] then
+    vb.views[toggle_id].color = row.arp_enabled and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
+  end
+
+  local popup_id = "arp_mode_popup_" .. tostring(row_index)
+  if vb and vb.views[popup_id] then
+    vb.views[popup_id].active = row.arp_enabled
+  end
+
+  if row.arp_enabled then
+    local Arp = require("arpeggiator")
+    Arp.apply_to_row(row_index)
+  else
+    row.arp_notes = {}
+    local PianoRoll = require("piano_roll")
+    PianoRoll.update_display(row_index)
+  end
+
+  print("Arp " .. row_index .. " enabled: " .. tostring(row.arp_enabled))
+end
+
+-- Set arp mode for a given sequencer row
+function TrackManager.set_arp_mode(row_index, mode)
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+
+  row.arp_mode = mode
+
+  if row.arp_enabled then
+    local Arp = require("arpeggiator")
+    Arp.apply_to_row(row_index)
+  end
+
+  print("Arp mode for row " .. row_index .. " set to: " .. mode)
 end
 
 function TrackManager.toggle_note_row_visibility(row_index)
@@ -592,6 +662,14 @@ function TrackManager.apply_global_note_constraints()
       end
     end
   end
+
+  -- Refresh piano roll displays and arp sequences
+  local PianoRoll = require("piano_roll")
+  local Arp       = require("arpeggiator")
+  for r = 1, #State.sequencer_data do
+    PianoRoll.update_display(r)
+  end
+  Arp.refresh_all()
 end
 
 return TrackManager

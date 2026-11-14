@@ -196,4 +196,117 @@ function MusicTheory.map_note_to_rotary(note_value, base_note_value, octave_rang
   return MusicTheory.note_to_percentage(note_value, base_note_value or 48, octave_range or 3)
 end
 
+--- Return all MIDI notes in the octave of base_note that belong to scale_mode/scale_key.
+-- For "None" returns all 12 chromatic notes in that octave. List is sorted low to high.
+-- @param scale_mode  string  Scale name or "None"
+-- @param scale_key   number  1-12 root key index
+-- @param base_note   number  MIDI note (determines which octave to use)
+-- @return table  Array of MIDI note values
+function MusicTheory.get_scale_notes_in_octave(scale_mode, scale_key, base_note)
+  local octave_start = math.floor(base_note / 12) * 12
+  if scale_mode == "None" then
+    local notes = {}
+    for i = 0, 11 do table.insert(notes, octave_start + i) end
+    return notes
+  end
+  local C = require("constants")
+  local intervals = C.SCALE_INTERVALS[scale_mode]
+  if not intervals then
+    local notes = {}
+    for i = 0, 11 do table.insert(notes, octave_start + i) end
+    return notes
+  end
+  local root_pc = (scale_key - 1) % 12
+  local allowed_pcs = {}
+  for _, iv in ipairs(intervals) do allowed_pcs[(root_pc + iv) % 12] = true end
+  local notes = {}
+  for i = 0, 11 do
+    local note = octave_start + i
+    if allowed_pcs[note % 12] and note >= 0 and note <= 119 then
+      table.insert(notes, note)
+    end
+  end
+  return notes
+end
+
+--- Generate an arp note sequence from per-step trigger notes.
+-- Returns a {[step]=note_value} map covering all steps filled by the arp.
+-- Segments run from each trigger step to the step before the next trigger.
+-- @param trigger_notes_map  table  {[step]=note_value} for trigger positions
+-- @param mode               string  "up"|"down"|"updown"|"downup"|"random"
+-- @param num_steps          number  Total steps in the row
+-- @param scale_mode         string
+-- @param scale_key          number  1-12
+-- @return table  {[step]=note_value}
+function MusicTheory.generate_arp_sequence(trigger_notes_map, mode, num_steps, scale_mode, scale_key)
+  local result = {}
+  local trigger_steps = {}
+  for step, _ in pairs(trigger_notes_map) do table.insert(trigger_steps, step) end
+  table.sort(trigger_steps)
+  if #trigger_steps == 0 then return result end
+
+  for seg_idx, trigger_step in ipairs(trigger_steps) do
+    local trigger_note = trigger_notes_map[trigger_step]
+    local next_trigger = trigger_steps[seg_idx + 1] or (num_steps + 1)
+    local seg_length   = next_trigger - trigger_step
+    local scale_notes  = MusicTheory.get_scale_notes_in_octave(scale_mode, scale_key, trigger_note)
+    local n = #scale_notes
+
+    local start_idx = 1
+    if n > 0 then
+      local best_dist = 999
+      for i, note in ipairs(scale_notes) do
+        local d = math.abs(note - trigger_note)
+        if d < best_dist then best_dist = d; start_idx = i end
+      end
+    end
+
+    local seq = {}
+    if n == 0 then
+      for i = 1, seg_length do seq[i] = trigger_note end
+    elseif mode == "up" then
+      for i = 1, seg_length do
+        seq[i] = scale_notes[((start_idx - 1 + (i-1)) % n) + 1]
+      end
+    elseif mode == "down" then
+      for i = 1, seg_length do
+        seq[i] = scale_notes[(((start_idx - 1 - (i-1)) % n) + n) % n + 1]
+      end
+    elseif mode == "updown" then
+      if n == 1 then
+        for i = 1, seg_length do seq[i] = scale_notes[1] end
+      else
+        local pattern = {}
+        for j = 1, n do table.insert(pattern, j) end
+        for j = n-1, 2, -1 do table.insert(pattern, j) end
+        local pl = #pattern
+        for i = 1, seg_length do
+          seq[i] = scale_notes[pattern[((start_idx - 1 + (i-1)) % pl) + 1]]
+        end
+      end
+    elseif mode == "downup" then
+      if n == 1 then
+        for i = 1, seg_length do seq[i] = scale_notes[1] end
+      else
+        local pattern = {}
+        for j = n, 1, -1 do table.insert(pattern, j) end
+        for j = 2, n-1 do table.insert(pattern, j) end
+        local pl = #pattern
+        for i = 1, seg_length do
+          seq[i] = scale_notes[pattern[((start_idx - 1 + (i-1)) % pl) + 1]]
+        end
+      end
+    else -- random
+      seq[1] = trigger_note
+      for i = 2, seg_length do seq[i] = scale_notes[math.random(1, n)] end
+    end
+
+    for i = 1, seg_length do
+      local step = trigger_step + i - 1
+      if step <= num_steps then result[step] = seq[i] end
+    end
+  end
+  return result
+end
+
 return MusicTheory

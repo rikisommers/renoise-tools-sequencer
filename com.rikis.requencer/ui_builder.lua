@@ -10,6 +10,7 @@ local State         = require("state")
 local PatternWriter = require("pattern_writer")
 local TrackManager  = require("track_manager")
 local MidiMappings  = require("midi_mappings")
+local PianoRoll     = require("piano_roll")
 
 local UIBuilder = {}
 
@@ -41,15 +42,18 @@ local function create_labels_row()
   local vb = State.vb
   return vb:row{
     spacing = C.CONTROL_SPACING,
-    vb:text{width = cl, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cl, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
-    vb:text{width = cs, height = cs, text = ""},
+    vb:text{width = cl, height = cs, text = ""},  -- instrument
+    vb:text{width = cs, height = cs, text = ""},  -- chord toggle
+    vb:text{width = cs, height = cs, text = ""},  -- arp toggle
+    vb:text{width = cl, height = cs, text = ""},  -- chord popup
+    vb:text{width = cl, height = cs, text = ""},  -- arp popup
+    vb:text{width = cs, height = cs, text = ""},  -- TN
+    vb:text{width = cs, height = cs, text = ""},  -- TD
+    vb:text{width = cs, height = cs, text = ""},  -- TV
+    vb:text{width = cs, height = cs, text = ""},  -- N
+    vb:text{width = cs, height = cs, text = ""},  -- V
+    vb:text{width = cs, height = cs, text = ""},  -- D
+    vb:text{width = cs, height = cs, text = ""},  -- P
   }
 end
 
@@ -70,14 +74,17 @@ function UIBuilder.create_step_indicators(steps)
 
   -- Column header labels
   row:add_child(vb:text{width = cl, text = "Instrument", align = "left"})
-  row:add_child(vb:text{width = cs, text = "C",  align = "left"})
-  row:add_child(vb:text{width = cl, text = "Chord",     align = "left"})
-  row:add_child(vb:text{width = cs, text = "TN", align = "center"})
-  row:add_child(vb:text{width = cs, text = "TD", align = "center"})
-  row:add_child(vb:text{width = cs, text = "TV", align = "center"})
-  row:add_child(vb:text{width = cs, text = "N",  align = "center"})
-  row:add_child(vb:text{width = cs, text = "V",  align = "center"})
-  row:add_child(vb:text{width = cs, text = "D",  align = "center"})
+  row:add_child(vb:text{width = cs, text = "C",   align = "left"})
+  row:add_child(vb:text{width = cs, text = "A",   align = "center"})
+  row:add_child(vb:text{width = cl, text = "Chord",      align = "left"})
+  row:add_child(vb:text{width = cl, text = "ARP",        align = "left"})
+  row:add_child(vb:text{width = cs, text = "TN",  align = "center"})
+  row:add_child(vb:text{width = cs, text = "TD",  align = "center"})
+  row:add_child(vb:text{width = cs, text = "TV",  align = "center"})
+  row:add_child(vb:text{width = cs, text = "N",   align = "center"})
+  row:add_child(vb:text{width = cs, text = "V",   align = "center"})
+  row:add_child(vb:text{width = cs, text = "D",   align = "center"})
+  row:add_child(vb:text{width = cs, text = "P",   align = "center"})
 
   for step = 1, steps do
     local indicator = vb:button{
@@ -151,6 +158,17 @@ function UIBuilder.create_step_row(row_index, steps)
       notifier = function() TrackManager.toggle_chord_track(row_index) end
     },
 
+    -- Arp toggle
+    vb:button{
+      id      = "arp_toggle_" .. tostring(row_index),
+      text    = "A",
+      width   = cs,
+      height  = cs,
+      color   = C.BUTTON_COLOR_INACTIVE,
+      tooltip = "Enable/disable arpeggiator for this row",
+      notifier = function() TrackManager.toggle_arp_enabled(row_index) end
+    },
+
     -- Chord type popup
     vb:popup{
       id      = "chord_popup_" .. tostring(row_index),
@@ -192,6 +210,20 @@ function UIBuilder.create_step_row(row_index, steps)
           end
         end
         print("Selected chord " .. chord_type .. " for row " .. row_index)
+      end
+    },
+
+    -- Arp mode popup
+    vb:popup{
+      id      = "arp_mode_popup_" .. tostring(row_index),
+      width   = cl,
+      height  = cs,
+      items   = C.ARP_MODES,
+      value   = 1,
+      active  = false,
+      tooltip = "Select arp mode (enable A button first)",
+      notifier = function(index)
+        TrackManager.set_arp_mode(row_index, C.ARP_MODES[index])
       end
     },
 
@@ -331,6 +363,15 @@ function UIBuilder.create_step_row(row_index, steps)
       tooltip  = "Toggle delay row visibility",
       notifier = function() TrackManager.toggle_delay_row_visibility(row_index) end
     },
+    vb:button{
+      id       = "piano_roll_toggle_" .. tostring(row_index),
+      text     = "P",
+      width    = cs,
+      height   = cs,
+      color    = C.BUTTON_COLOR_INACTIVE,
+      tooltip  = "Toggle piano roll visibility",
+      notifier = function() TrackManager.toggle_piano_roll_visibility(row_index) end
+    },
   }
 
   -- Register MIDI mappings for track controls
@@ -353,6 +394,35 @@ function UIBuilder.create_step_row(row_index, steps)
       height   = cs,
       font     = "mono",
       notifier = function()
+        -- Arp mode: toggle trigger note
+        if data.arp_enabled then
+          if not data.arp_trigger_notes then data.arp_trigger_notes = {} end
+          if not data.step_notes then data.step_notes = {} end
+          if data.arp_trigger_notes[s] then
+            data.arp_trigger_notes[s] = nil
+            data.step_states[s] = 0
+            data.step_notes[s]  = nil
+            PatternWriter.clear_step_from_pattern(row_index, s)
+            if vb.views[button_id] then
+              vb.views[button_id].text  = "   "
+              vb.views[button_id].color = C.BUTTON_COLOR_OFF
+            end
+          else
+            local pitch = (data.step_notes[s]) or data.note_value or data.base_note_value or 48
+            data.arp_trigger_notes[s] = pitch
+            data.step_states[s] = 1
+            data.step_notes[s]  = pitch
+            if vb.views[button_id] then
+              vb.views[button_id].text  = MusicTheory.note_value_to_string(pitch)
+              vb.views[button_id].color = C.PIANO_ROLL_TRIGGER_COLOR
+            end
+          end
+          local Arp = require("arpeggiator")
+          Arp.apply_to_row(row_index)
+          return
+        end
+
+        -- Normal mode: cycle 0→1→2→0
         local cur = data.step_states[s]
         local nxt = (cur + 1) % 3
         data.step_states[s] = nxt
@@ -428,7 +498,7 @@ function UIBuilder.create_note_row(row_index, steps)
   local data = State.sequencer_data[row_index]
 
   if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
+    State.track_visibility[row_index] = State.create_default_visibility()
   end
 
   local note_row = vb:row{
@@ -489,7 +559,7 @@ function UIBuilder.create_volume_row(row_index, steps)
   local data = State.sequencer_data[row_index]
 
   if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
+    State.track_visibility[row_index] = State.create_default_visibility()
   end
 
   local vol_row = vb:row{
@@ -537,7 +607,7 @@ function UIBuilder.create_delay_row(row_index, steps)
   local data = State.sequencer_data[row_index]
 
   if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
+    State.track_visibility[row_index] = State.create_default_visibility()
   end
 
   local delay_row = vb:row{
@@ -585,6 +655,7 @@ function UIBuilder.create_styled_row_group(row_index, steps)
     UIBuilder.create_note_row(row_index, steps),
     UIBuilder.create_volume_row(row_index, steps),
     UIBuilder.create_delay_row(row_index, steps),
+    PianoRoll.create_piano_roll_row(row_index, steps),
   }
   return vb:row{
     margin     = C.ROW_PADDING,

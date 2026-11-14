@@ -80,4 +80,12 @@ C.CHORD_TYPES = {
   ["Sus4"]       = {0, 5, 7},
 }
 
+-- Piano roll
+C.PIANO_ROLL_TRIGGER_COLOR = {255, 220, 50}  -- Yellow: arp trigger notes
+C.PIANO_ROLL_ARP_COLOR     = {80, 150, 255}  -- Blue: generated arp notes
+C.PIANO_ROLL_LABEL_WIDTH   = 28              -- px for note name label
+
+-- Arp modes
+C.ARP_MODES = {"up", "down", "updown", "downup", "random"}
+
 return C

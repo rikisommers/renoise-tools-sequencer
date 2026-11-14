@@ -44,6 +44,7 @@ State.step_indicators_row = nil
 State.track_note_rows   = {}
 State.track_volume_rows = {}
 State.track_delay_rows  = {}
+State.track_piano_roll_rows = {}
 
 -- Dialog reference
 State.dialog = nil
@@ -74,16 +75,32 @@ end
 -- @return table  Fresh row with sensible defaults.
 function State.create_default_row()
   return {
-    instrument      = 1,
-    note_value      = 48,
-    base_note_value = 48,
-    step_states     = {},
-    step_notes      = {},
-    step_volumes    = {},
-    step_delays     = {},
-    track_volume    = 100,
-    is_chord_track  = false,
-    chord_type      = "None",
+    instrument        = 1,
+    note_value        = 48,
+    base_note_value   = 48,
+    step_states       = {},
+    step_notes        = {},
+    step_volumes      = {},
+    step_delays       = {},
+    track_volume      = 100,
+    is_chord_track    = false,
+    chord_type        = "None",
+    piano_roll_visible = false,
+    arp_enabled        = false,
+    arp_mode           = "up",
+    arp_trigger_notes  = {},
+    arp_notes          = {},
+  }
+end
+
+--- Create default visibility flags for a sequencer row.
+-- @return table  Fresh visibility table.
+function State.create_default_visibility()
+  return {
+    note_visible       = false,
+    volume_visible     = false,
+    delay_visible      = false,
+    piano_roll_visible = false,
   }
 end
 
@@ -113,7 +130,7 @@ function State:add_row(data)
   end
   table.insert(self.sequencer_data, row)
   local idx = #self.sequencer_data
-  self.track_visibility[idx] = {note_visible = false, volume_visible = false, delay_visible = false}
+  self.track_visibility[idx] = State.create_default_visibility()
   return idx
 end
 
@@ -138,6 +155,7 @@ function State:reset()
   self.track_note_rows   = {}
   self.track_volume_rows = {}
   self.track_delay_rows  = {}
+  self.track_piano_roll_rows = {}
   self.dialog            = nil
   self.vb               = nil
   self.instruments_notifier = nil
