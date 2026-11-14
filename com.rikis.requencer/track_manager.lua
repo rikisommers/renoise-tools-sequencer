@@ -5,82 +5,108 @@ local State = require("state")
 local Constants = require("constants")
 local MusicTheory = require("music_theory")
 local PatternWriter = require("pattern_writer")
+local SubRows = require("sub_rows")
 
 local TrackManager = {}
 
--- Toggle note row visibility for a given sequencer row
+-- Collapse/expand sub-row (values are retained)
+function TrackManager.toggle_piano_roll_visibility(row_index)
+  SubRows.toggle(row_index, "piano")
+end
+
+-- Toggle note repeat for a row: shows the repeat sub-row, enables an effect
+-- Collapse/expand the note repeat sub-row (repeat steps are retained)
+function TrackManager.toggle_repeat_visibility(row_index)
+  SubRows.toggle(row_index, "rep")
+end
+
+-- Toggle repeat on/off for a single step
+function TrackManager.toggle_repeat_step(row_index, step)
+  local vb = State.vb
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+  if not row.step_repeats then row.step_repeats = {} end
+
+  row.step_repeats[step] = (not row.step_repeats[step]) or nil
+  PatternWriter.write_repeat_step(row_index, step)
+  SubRows.refresh_indicators(row_index)
+
+  local btn_id = "repeat_step_" .. tostring(row_index) .. "_" .. tostring(step)
+  if vb.views[btn_id] then
+    local on = row.step_repeats[step]
+    vb.views[btn_id].text  = on and "R" or "--"
+    vb.views[btn_id].color = on and Constants.REPEAT_STEP_COLOR or Constants.BUTTON_COLOR_INACTIVE
+  end
+end
+
+-- Set repeat speed (ticks between retriggers) for a row and rewrite effects
+function TrackManager.set_repeat_speed(row_index, speed)
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+  row.repeat_speed = math.max(1, math.min(15, speed))
+  PatternWriter.write_repeats_for_row(row_index)
+  print("Repeat speed row " .. row_index .. ": R0" .. string.format("%X", row.repeat_speed))
+end
+
+-- Toggle arp enabled for a given sequencer row
+function TrackManager.toggle_arp_enabled(row_index)
+  local vb = State.vb
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+
+  row.arp_enabled = not row.arp_enabled
+
+  local toggle_id = "arp_toggle_" .. tostring(row_index)
+  if vb.views[toggle_id] then
+    vb.views[toggle_id].color = row.arp_enabled and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
+  end
+
+  local popup_id = "arp_mode_popup_" .. tostring(row_index)
+  if vb.views[popup_id] then
+    vb.views[popup_id].active = row.arp_enabled
+  end
+
+  if row.arp_enabled then
+    local Arp = require("arpeggiator")
+    Arp.apply_to_row(row_index)
+  else
+    -- Clear arp-generated state, restore step buttons to normal appearance
+    row.arp_notes = {}
+    local PianoRoll = require("piano_roll")
+    PianoRoll.update_display(row_index)
+  end
+
+  print("Arp " .. row_index .. " enabled: " .. tostring(row.arp_enabled))
+end
+
+-- Set arp mode for a given sequencer row
+function TrackManager.set_arp_mode(row_index, mode)
+  local row = State.sequencer_data[row_index]
+  if not row then return end
+
+  row.arp_mode = mode
+
+  if row.arp_enabled then
+    local Arp = require("arpeggiator")
+    Arp.apply_to_row(row_index)
+  end
+
+  print("Arp mode for row " .. row_index .. " set to: " .. mode)
+end
+
+-- Collapse/expand sub-row (values are retained)
 function TrackManager.toggle_note_row_visibility(row_index)
-  local vb = State.vb
-  if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
-  end
-
-  local is_visible = State.track_visibility[row_index].note_visible
-  State.track_visibility[row_index].note_visible = not is_visible
-
-  if State.track_note_rows[row_index] then
-    State.track_note_rows[row_index].visible = not is_visible
-  end
-
-  local toggle_id = "note_toggle_" .. tostring(row_index)
-  if vb.views[toggle_id] then
-    vb.views[toggle_id].color = not is_visible and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
-  end
-
-  print("Note row " .. row_index .. " visibility: " .. tostring(not is_visible))
+  SubRows.toggle(row_index, "note")
 end
 
--- Toggle volume row visibility for a given sequencer row
+-- Collapse/expand sub-row (values are retained)
 function TrackManager.toggle_volume_row_visibility(row_index)
-  local vb = State.vb
-  if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
-  end
-
-  local is_visible = State.track_visibility[row_index].volume_visible
-  State.track_visibility[row_index].volume_visible = not is_visible
-
-  if State.track_volume_rows[row_index] then
-    State.track_volume_rows[row_index].visible = not is_visible
-  end
-
-  local toggle_id = "volume_toggle_" .. tostring(row_index)
-  if vb.views[toggle_id] then
-    vb.views[toggle_id].color = not is_visible and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
-  end
-
-  print("Volume row " .. row_index .. " visibility: " .. tostring(not is_visible))
+  SubRows.toggle(row_index, "volume")
 end
 
--- Toggle delay row visibility for a given sequencer row
+-- Collapse/expand sub-row (values are retained)
 function TrackManager.toggle_delay_row_visibility(row_index)
-  local vb = State.vb
-  if not State.track_visibility[row_index] then
-    State.track_visibility[row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
-  end
-
-  local is_visible = State.track_visibility[row_index].delay_visible
-  State.track_visibility[row_index].delay_visible = not is_visible
-
-  if State.track_delay_rows[row_index] then
-    State.track_delay_rows[row_index].visible = not is_visible
-  end
-
-  local track_index = State:get_track_index_for_row(row_index)
-  local song = renoise.song()
-  if track_index <= #song.tracks then
-    local track = song.tracks[track_index]
-    if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
-      track.delay_column_visible = not is_visible
-    end
-  end
-
-  local toggle_id = "delay_toggle_" .. tostring(row_index)
-  if vb.views[toggle_id] then
-    vb.views[toggle_id].color = not is_visible and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE
-  end
-
-  print("Delay row " .. row_index .. " visibility: " .. tostring(not is_visible))
+  SubRows.toggle(row_index, "delay")
 end
 
 -- Toggle chord mode for a sequencer row
@@ -124,9 +150,6 @@ function TrackManager.toggle_chord_track(row_index)
             if step_state == 1 then
               local note_to_use = State.sequencer_data[row_index].step_notes and State.sequencer_data[row_index].step_notes[s] or State.sequencer_data[row_index].note_value
               PatternWriter.update_step_note_in_pattern(row_index, s, note_to_use)
-            elseif step_state == 2 then
-              PatternWriter.update_note_in_pattern(row_index, s, false)
-              PatternWriter.update_step_volume_in_pattern(row_index, s, 0)
             end
           end
         end
@@ -140,9 +163,6 @@ function TrackManager.toggle_chord_track(row_index)
             if step_state == 1 then
               local note_to_use = State.sequencer_data[row_index].step_notes and State.sequencer_data[row_index].step_notes[s] or State.sequencer_data[row_index].note_value
               PatternWriter.update_step_note_in_pattern(row_index, s, note_to_use)
-            elseif step_state == 2 then
-              PatternWriter.update_note_in_pattern(row_index, s, false)
-              PatternWriter.update_step_volume_in_pattern(row_index, s, 0)
             end
           end
         end
@@ -187,8 +207,8 @@ function TrackManager.remove_sequencer_row(row_index)
   for s = 1, State.num_steps do
     local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
     if vb.views[button_id] then
-      vb.views[button_id].text = "--"
-      vb.views[button_id].color = {80, 80, 80}
+      vb.views[button_id].text = ""
+      vb.views[button_id].color = State.empty_step_color(s)
       vb.views[button_id].width = Constants.cellSize
     end
   end
@@ -441,7 +461,7 @@ function TrackManager.save_row_as_phrase(row_index)
   end
 
   for s = 1, State.num_steps do
-    if data.step_states and data.step_states[s] and data.step_states[s] > 0 then
+    if data.step_states and data.step_states[s] == 1 then
       local line = new_phrase:line(s)
       local note_column = line:note_column(1)
 
@@ -568,6 +588,15 @@ function TrackManager.apply_global_note_constraints()
       end
     end
   end
+
+  -- Refresh piano roll displays and arp sequences
+  local PianoRoll = require("piano_roll")
+  local Arp       = require("arpeggiator")
+  for r = 1, #State.sequencer_data do
+    PianoRoll.update_display(r)
+  end
+  Arp.refresh_all()
+  SubRows.refresh_all_indicators()
 end
 
 return TrackManager

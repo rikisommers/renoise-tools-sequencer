@@ -11,6 +11,8 @@ local TrackManager = require("track_manager")
 local UIBuilder = require("ui_builder")
 local Playback = require("playback")
 local MidiMappings = require("midi_mappings")
+local SubRows = require("sub_rows")
+local Persistence = require("persistence")
 
 -- Main dialog creation and orchestration
 local function show_sequencer_dialog()
@@ -29,6 +31,16 @@ local function show_sequencer_dialog()
 
   -- Clean up MIDI mappings to avoid duplicates
   MidiMappings.cleanup_all_mappings()
+
+  -- Decide early whether to reuse the in-memory session or restore from the
+  -- song; global settings (step count, scale, ...) must be known before the
+  -- toolbar and grid are built.
+  local reuse_session = State:can_reuse_session()
+  local saved_snapshot = nil
+  if not reuse_session then
+    saved_snapshot = Persistence.load()
+    Persistence.apply_globals(saved_snapshot)
+  end
 
   -- Create new ViewBuilder instance to avoid ID conflicts
   State:reset_ui()
@@ -76,17 +88,20 @@ local function show_sequencer_dialog()
         local old_notes   = row.step_notes   or {}
         local old_volumes = row.step_volumes or {}
         local old_delays  = row.step_delays  or {}
+        local old_repeats = row.step_repeats or {}
 
         row.step_states  = {}
         row.step_notes   = {}
         row.step_volumes = {}
         row.step_delays  = {}
+        row.step_repeats = {}
 
         for s = 1, new_steps do
           row.step_states[s] = old_states[s] or 0
           if old_notes[s]   then row.step_notes[s]   = old_notes[s]   end
           if old_volumes[s] then row.step_volumes[s]  = old_volumes[s] end
           if old_delays[s]  then row.step_delays[s]   = old_delays[s]  end
+          if old_repeats[s] then row.step_repeats[s]  = true           end
         end
       end
     end
@@ -109,71 +124,55 @@ local function show_sequencer_dialog()
     show_sequencer_dialog()
   end
 
+  -- Add a new sequencer row (track) after the last sequencer track
+  local function add_row()
+    local song = renoise.song()
+
+    local insert_pos = 1
+    for i = 1, #song.tracks do
+      local track = song.tracks[i]
+      if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
+        insert_pos = i + 1
+      end
+    end
+
+    print("Adding new row at track position: " .. insert_pos)
+
+    song:insert_track_at(insert_pos)
+
+    local instrument_name = "Unknown"
+    if #song.instruments > 0 then
+      instrument_name = song.instruments[1].name
+    end
+
+    local track = song.tracks[insert_pos]
+    track.name = "Sequencer_" .. instrument_name
+    track.color = {0x60, 0xC0, 0xFF}
+    track.output_delay = 0
+
+    local new_row_index = #State.sequencer_data + 1
+    State.track_mapping[new_row_index] = insert_pos
+    State.num_rows = State.num_rows + 1
+
+    print("Row " .. new_row_index .. " -> Track " .. insert_pos .. " (" .. instrument_name .. ")")
+
+    State.sequencer_data[new_row_index] = State.create_default_row()
+    for s = 1, State.num_steps do
+      State.sequencer_data[new_row_index].step_states[s] = 0
+    end
+
+    State.track_visibility[new_row_index] = State.create_default_visibility()
+
+    local row_view = UIBuilder.create_styled_row_group(new_row_index, State.num_steps)
+    State.step_grid_view:add_child(row_view)
+    table.insert(State.grid_children, row_view)
+    TrackManager.apply_global_note_constraints()
+
+    song.selected_track_index = insert_pos
+  end
+
   -- Controls toolbar
   local controls_row = vb:row{
-    -- Add Row button
-    vb:button{
-      text = "+",
-      width = Constants.cellSize,
-      height = Constants.cellSize,
-      tooltip = "Add Row",
-      notifier = function()
-        local song = renoise.song()
-
-        local insert_pos = 1
-        for i = 1, #song.tracks do
-          local track = song.tracks[i]
-          if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
-            insert_pos = i + 1
-          end
-        end
-
-        print("Adding new row at track position: " .. insert_pos)
-
-        song:insert_track_at(insert_pos)
-
-        local instrument_name = "Unknown"
-        if #song.instruments > 0 then
-          instrument_name = song.instruments[1].name
-        end
-
-        local track = song.tracks[insert_pos]
-        track.name = "Sequencer_" .. instrument_name
-        track.color = {0x60, 0xC0, 0xFF}
-        track.output_delay = 0
-
-        local new_row_index = #State.sequencer_data + 1
-        State.track_mapping[new_row_index] = insert_pos
-        State.num_rows = State.num_rows + 1
-
-        print("Row " .. new_row_index .. " -> Track " .. insert_pos .. " (" .. instrument_name .. ")")
-
-        State.sequencer_data[new_row_index] = {
-          instrument = 1,
-          note_value = 48,
-          base_note_value = 48,
-          step_states = {},
-          step_notes = {},
-          step_volumes = {},
-          step_delays = {},
-          track_volume = 100,
-          is_chord_track = false,
-          chord_type = "None"
-        }
-        for s = 1, State.num_steps do
-          State.sequencer_data[new_row_index].step_states[s] = 0
-        end
-
-        State.track_visibility[new_row_index] = {note_visible = false, volume_visible = false, delay_visible = false}
-
-        local row_view = UIBuilder.create_styled_row_group(new_row_index, State.num_steps)
-        State.step_grid_view:add_child(row_view)
-        table.insert(State.grid_children, row_view)
-        TrackManager.apply_global_note_constraints()
-
-        song.selected_track_index = insert_pos
-      end
-    },
 
     -- Play/Stop button
     vb:button{
@@ -186,9 +185,7 @@ local function show_sequencer_dialog()
         local song = renoise.song()
         song.transport.playing = not song.transport.playing
         if not song.transport.playing then
-          for _, indicator in ipairs(State.step_indicators) do
-            indicator.color = Constants.INACTIVE_COLOR
-          end
+          Playback.reset_step_indicators()
         end
       end
     },
@@ -259,7 +256,12 @@ local function show_sequencer_dialog()
       id = "scale_mode_dropdown",
       items = MusicTheory.get_available_scales(),
       height = Constants.cellSize,
-      value = 1,
+      value = (function()
+        for i, name in ipairs(MusicTheory.get_available_scales()) do
+          if name == State.global_scale_mode then return i end
+        end
+        return 1
+      end)(),
       notifier = function(index)
         local items = vb.views.scale_mode_dropdown.items
         State.global_scale_mode = items[index]
@@ -282,29 +284,30 @@ local function show_sequencer_dialog()
     },
   }
 
-  -- Initialize session data
-  State:reset_data()
+  -- Initialize session data. Reuse in-memory data when reopening the dialog
+  -- on the same song with the same sequencer tracks, so nothing that isn't
+  -- stored in the pattern (rotary values on empty steps, open sub-rows,
+  -- piano roll scroll, etc.) is lost. Otherwise rebuild from the pattern.
+  local loaded_from_pattern = true
 
-  local loaded_from_pattern = PatternWriter.load_sequencer_from_pattern()
+  if reuse_session then
+    print("Reusing existing sequencer session (" .. State.num_rows .. " rows)")
+  else
+    State:reset_data()
+    loaded_from_pattern = PatternWriter.load_sequencer_from_pattern()
+    if loaded_from_pattern and saved_snapshot then
+      Persistence.apply_rows(saved_snapshot)
+    end
+  end
+  State.session_valid = true
 
   if not loaded_from_pattern then
     print("Creating new sequencer session")
-    State.sequencer_data[1] = {
-      instrument = 1,
-      note_value = 48,
-      base_note_value = 48,
-      step_states = {},
-      step_notes = {},
-      step_volumes = {},
-      step_delays = {},
-      track_volume = 100,
-      is_chord_track = false,
-      chord_type = "None"
-    }
+    State.sequencer_data[1] = State.create_default_row()
     for s = 1, State.num_steps do
       State.sequencer_data[1].step_states[s] = 0
     end
-    State.track_visibility[1] = {note_visible = false, volume_visible = false, delay_visible = false}
+    State.track_visibility[1] = State.create_default_visibility()
     State.num_rows = 1
     TrackManager.setup_default_track_group()
   else
@@ -315,7 +318,7 @@ local function show_sequencer_dialog()
   for r = 1, #State.sequencer_data do
     if State.sequencer_data[r] then
       if not State.track_visibility[r] then
-        State.track_visibility[r] = {note_visible = false, volume_visible = false, delay_visible = false}
+        State.track_visibility[r] = State.create_default_visibility()
       end
       if not State.sequencer_data[r].step_delays then
         State.sequencer_data[r].step_delays = {}
@@ -328,12 +331,23 @@ local function show_sequencer_dialog()
 
   TrackManager.apply_global_note_constraints()
   PatternWriter.sync_pattern_to_sequencer()
+  SubRows.refresh_all_indicators()
 
   -- Assemble dialog layout
+  -- Add Row button sits below the last row (rows are appended to the grid)
+  local add_row_button = vb:button{
+    text = "+",
+    width = Constants.cellSize,
+    height = Constants.cellSize,
+    tooltip = "Add Row",
+    notifier = add_row,
+  }
+
   local sequencer_section = vb:column{
     spacing = Constants.indicator_spacing,
     State.step_indicators_row,
-    State.step_grid_view
+    State.step_grid_view,
+    add_row_button,
   }
 
   local dialog_content = vb:column{
@@ -356,6 +370,12 @@ local function show_sequencer_dialog()
     end)
     State.playing_notifier = nil
   end
+  if State.lpb_notifier then
+    pcall(function()
+      renoise.song().transport.lpb_observable:remove_notifier(State.lpb_notifier)
+    end)
+    State.lpb_notifier = nil
+  end
 
   -- Set up idle notifier for step indicator updates
   State.idle_notifier = function()
@@ -372,9 +392,15 @@ local function show_sequencer_dialog()
   end
   renoise.song().transport.playing_observable:add_notifier(State.playing_notifier)
 
+  -- Re-shade beat starts when the song's LPB changes
+  State.lpb_notifier = function()
+    Playback.refresh_beat_shading()
+  end
+  renoise.song().transport.lpb_observable:add_notifier(State.lpb_notifier)
+
   -- Show dialog
   State.dialog = renoise.app():show_custom_dialog("Requencer", dialog_content, function()
-    -- Dialog closed callback
+    -- Key handler (show_custom_dialog's 3rd argument): keys are ignored
   end)
 
   Playback.update_play_button()
@@ -385,10 +411,28 @@ local function show_sequencer_dialog()
     TrackManager.refresh_instrument_dropdowns()
   end
   renoise.song().instruments_observable:add_notifier(State.instruments_notifier)
+
+  -- Save settings straight away (covers step count changes, which reopen
+  -- the dialog) rather than waiting for the next autosave tick
+  Persistence.save()
 end
 
 -- Register callback on state so track_manager can reopen dialog
 State.show_sequencer_dialog = show_sequencer_dialog
+
+-- Keep settings saved inside the song (tool_data)
+Persistence.start_autosave()
+
+-- A new/loaded song invalidates the in-memory session
+renoise.tool().app_new_document_observable:add_notifier(function()
+  State.session_valid = false
+  -- Don't carry global settings over from the previous song; they are
+  -- restored from the new song's tool_data (if any) when the dialog opens.
+  State.num_steps           = 16
+  State.global_octave_range = 3
+  State.global_scale_mode   = "None"
+  State.global_scale_key    = 1
+end)
 
 -- Register menu entry
 renoise.tool():add_menu_entry {
