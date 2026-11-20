@@ -3,7 +3,6 @@ A step sequencer tool for Renoise with pattern integration and MIDI control.
 This provides similar functionality to Paketti Groovebox 8120 but with more fine-grained control over note, volume and delay per step.
 
 ## Supported Renoise Versions
-- Renoise 3.4
 - Renoise 3.5
 
 
@@ -88,6 +87,7 @@ I would recommend having a look at [Paketti Groovebox 8120](https://www.perplexi
 
 ## Usage
 Access the tool from Renoise menu: **Tools → Requencer**
+
 
 
 # Requencer Patch Notes — v1.03

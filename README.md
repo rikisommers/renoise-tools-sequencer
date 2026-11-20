@@ -3,7 +3,6 @@ A step sequencer tool for Renoise with pattern integration and MIDI control.
 This provides similar functionality to Paketti Groovebox 8120 but with more fine-grained control over note, volume and delay per step.
 
 ## Supported Renoise Versions
-- Renoise 3.4
 - Renoise 3.5
 
 

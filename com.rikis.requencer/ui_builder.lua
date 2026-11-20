@@ -1,288 +1,296 @@
----------------------------------------------------------------
--- ui_builder.lua
 -- All ViewBuilder UI construction.
--- Returns view objects; delegates behaviour to other modules.
----------------------------------------------------------------
+-- Each function receives vb and dependencies through State and explicit requires.
 
-local Constants     = require("constants")
-local MusicTheory   = require("music_theory")
-local State         = require("state")
+local State = require("state")
+local Constants = require("constants")
+local MusicTheory = require("music_theory")
 local PatternWriter = require("pattern_writer")
-local TrackManager  = require("track_manager")
-local MidiMappings  = require("midi_mappings")
-local PianoRoll     = require("piano_roll")
+local TrackManager = require("track_manager")
+local MidiMappings = require("midi_mappings")
+local StepState = require("step_state")
+
+local PianoRoll = require("piano_roll")
+local SubRows = require("sub_rows")
 
 local UIBuilder = {}
 
--- Shorthand constants used throughout this module
-local C  = Constants
-local cs = C.CELL_SIZE
-local cl = C.CELL_SIZE_LG
-
----------------------------------------------------------------
--- Helpers
----------------------------------------------------------------
-
---- Get button text + colour for a step state (0=Off, 1=Play, 2=Stop).
-local function get_button_appearance(state)
-  if state == 0 then
-    return "   ", C.BUTTON_COLOR_OFF
-  elseif state == 1 then
-    return " ▶ ", C.BUTTON_COLOR_PLAY
-  elseif state == 2 then
-    return " ■ ", C.BUTTON_COLOR_STOP
-  end
-end
-
----------------------------------------------------------------
--- Labels row (spacer to align sub-rows with main step row)
----------------------------------------------------------------
-
-local function create_labels_row()
+-- Set a rotary value without re-entering its own notifier (Renoise feedback-loop guard).
+local function set_rotary_value_safely(rotary_id, new_value)
   local vb = State.vb
-  return vb:row{
-    spacing = C.CONTROL_SPACING,
-    vb:text{width = cl, height = cs, text = ""},  -- instrument
-    vb:text{width = cs, height = cs, text = ""},  -- chord toggle
-    vb:text{width = cs, height = cs, text = ""},  -- arp toggle
-    vb:text{width = cl, height = cs, text = ""},  -- chord popup
-    vb:text{width = cl, height = cs, text = ""},  -- arp popup
-    vb:text{width = cs, height = cs, text = ""},  -- TN
-    vb:text{width = cs, height = cs, text = ""},  -- TD
-    vb:text{width = cs, height = cs, text = ""},  -- TV
-    vb:text{width = cs, height = cs, text = ""},  -- N
-    vb:text{width = cs, height = cs, text = ""},  -- V
-    vb:text{width = cs, height = cs, text = ""},  -- D
-    vb:text{width = cs, height = cs, text = ""},  -- P
-  }
+  if not vb or not vb.views[rotary_id] then return end
+  if math.abs(vb.views[rotary_id].value - new_value) <= 0.01 then return end
+
+  State.updating_rotary[rotary_id] = true
+  vb.views[rotary_id].value = new_value
+  State.updating_rotary[rotary_id] = nil
 end
 
----------------------------------------------------------------
--- Step indicators (top header row)
----------------------------------------------------------------
-
---- Create the header row of step indicator buttons.
--- @param steps  number  Maximum number of indicators to create
--- @return view  The row view
+-- Create the step indicator row (header showing current playback position)
 function UIBuilder.create_step_indicators(steps)
   local vb = State.vb
-
   local row = vb:row{
-    spacing = C.CONTROL_SPACING,
-    margin  = C.ROW_PADDING,
+    spacing = Constants.control_spacing,
+    margin = Constants.ROW_PADDING,
   }
+  local labels = vb:row{ spacing = Constants.control_spacing }
 
-  -- Column header labels
-  row:add_child(vb:text{width = cl, text = "Instrument", align = "left"})
-  row:add_child(vb:text{width = cs, text = "C",   align = "left"})
-  row:add_child(vb:text{width = cs, text = "A",   align = "center"})
-  row:add_child(vb:text{width = cl, text = "Chord",      align = "left"})
-  row:add_child(vb:text{width = cl, text = "ARP",        align = "left"})
-  row:add_child(vb:text{width = cs, text = "TN",  align = "center"})
-  row:add_child(vb:text{width = cs, text = "TD",  align = "center"})
-  row:add_child(vb:text{width = cs, text = "TV",  align = "center"})
-  row:add_child(vb:text{width = cs, text = "N",   align = "center"})
-  row:add_child(vb:text{width = cs, text = "V",   align = "center"})
-  row:add_child(vb:text{width = cs, text = "D",   align = "center"})
-  row:add_child(vb:text{width = cs, text = "P",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSizeLg, text = "Instrument", align = "left"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "C",   align = "left"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "A",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSizeLg, text = "Chord", align = "left"})
+  labels:add_child(vb:text{width = Constants.cellSizeLg, text = "ARP", align = "left"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "TN",  align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "TD",  align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "TV",  align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "N",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "V",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "D",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "P",   align = "center"})
+  labels:add_child(vb:text{width = Constants.cellSize,   text = "R",   align = "center"})
+  row:add_child(SubRows.fixed_left(labels))
 
   for step = 1, steps do
     local indicator = vb:button{
-      width  = cs,
-      height = cs,
-      text   = "   ",
-      color  = (step % 4 == 1) and C.BLOCK_START_COLOR or C.INACTIVE_COLOR,
-      active = false,
-      font   = "mono",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      text = "   ",
+      color = State.is_beat_start(step) and Constants.BLOCK_START_COLOR or Constants.INACTIVE_COLOR,
+      active = false
     }
     row:add_child(indicator)
     table.insert(State.step_indicators, indicator)
   end
-
   return row
 end
 
----------------------------------------------------------------
--- Step row (main row: instrument, chord, rotaries, step buttons, actions)
----------------------------------------------------------------
+-- Left area of a sub-row: mirrors the step row's control slots, with the
+-- sub-row label in the instrument column.
+local function create_labels_row(row_index, key, label)
+  return SubRows.create_left_area({
+    [Constants.SLOT_INSTRUMENT] = SubRows.slot_label(label .. " "),
+  })
+end
 
+-- Index of value in list (1 if not found)
+local function index_of(list, value)
+  for i, v in ipairs(list) do
+    if v == value then return i end
+  end
+  return 1
+end
+
+-- Create the main step row (controls + step buttons) for a sequencer row
 function UIBuilder.create_step_row(row_index, steps)
   local vb = State.vb
-  local actual_steps = math.min(steps, State.num_steps)
   local data = State.sequencer_data[row_index]
-
-  local row = vb:row{
-    spacing = C.CONTROL_SPACING,
+  local instrument_names = TrackManager.get_instrument_names()
+  local chord_items = MusicTheory.get_available_chords()
+  local actual_steps = math.min(steps, State.num_steps)
+  local controls = vb:row{
+    spacing = Constants.control_spacing,
 
     -- Instrument selector
     vb:popup{
-      id      = "instrument_popup_" .. tostring(row_index),
-      width   = cl,
-      height  = cs,
-      items   = TrackManager.get_instrument_names(),
+      id = "instrument_popup_" .. tostring(row_index),
+      width = Constants.cellSizeLg,
+      height = Constants.cellSize,
+      items = instrument_names,
+      value = math.max(1, math.min(#instrument_names, data.instrument or 1)),
       tooltip = "Select instrument for this row",
       notifier = function(index)
-        data.instrument = index
-        print("Selected instrument " .. index .. " for row " .. row_index)
+        State.sequencer_data[row_index].instrument = index
+        print("Selected instrument " .. index .. " (0-based: " .. (index-1) .. ") for row " .. row_index)
 
         local song = renoise.song()
-        local track_index = TrackManager.get_track_index_for_row(row_index)
+        local track_index = State:get_track_index_for_row(row_index)
         if track_index <= #song.tracks then
-          song.tracks[track_index].name = "Sequencer_" .. song.instruments[index].name
+          local instrument_name = song.instruments[index].name
+          song.tracks[track_index].name = "Sequencer_" .. instrument_name
+          print("Updated track " .. track_index .. " name to: " .. song.tracks[track_index].name)
         end
 
-        -- Update pattern instrument for active play steps
-        local pattern = song:pattern(song.selected_pattern_index)
-        local pt = pattern:track(track_index)
+        local current_pattern_index = song.selected_pattern_index
+        local pattern = song:pattern(current_pattern_index)
+        local pattern_track = pattern:track(track_index)
+
         for s = 1, State.num_steps do
-          if data.step_states and data.step_states[s] == 1 then
-            for li = s, pattern.number_of_lines, State.num_steps do
-              local nc = pt:line(li):note_column(1)
-              if nc.note_value ~= 121 then
-                nc.instrument_value = index - 1
+          if State.sequencer_data[row_index].step_states and State.sequencer_data[row_index].step_states[s] then
+            local step_state = State.sequencer_data[row_index].step_states[s]
+            if step_state == 1 then
+              for line_index = s, pattern.number_of_lines, State.num_steps do
+                local line = pattern_track:line(line_index)
+                local note_column = line:note_column(1)
+                if note_column.note_value ~= 121 then
+                  note_column.instrument_value = index - 1
+                  print("Updated step " .. s .. " at line " .. line_index .. " to instrument " .. index)
+                end
               end
+            elseif step_state == 2 then
+              PatternWriter.write_note_off_to_step(row_index, s)
             end
           end
         end
       end
     },
 
-    -- Chord toggle
+    -- Chord track toggle
     vb:button{
-      id      = "chord_toggle_" .. tostring(row_index),
-      text    = "♯",
-      width   = cs,
-      height  = cs,
-      color   = C.BUTTON_COLOR_INACTIVE,
+      id = "chord_toggle_" .. tostring(row_index),
+      text = "♯",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = data.is_chord_track and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE,
       tooltip = "Enable/disable chord mode for this row",
-      notifier = function() TrackManager.toggle_chord_track(row_index) end
+      notifier = function()
+        TrackManager.toggle_chord_track(row_index)
+      end
     },
 
     -- Arp toggle
     vb:button{
-      id      = "arp_toggle_" .. tostring(row_index),
-      text    = "A",
-      width   = cs,
-      height  = cs,
-      color   = C.BUTTON_COLOR_INACTIVE,
+      id = "arp_toggle_" .. tostring(row_index),
+      text = "A",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = data.arp_enabled and Constants.BUTTON_COLOR_ACTIVE or Constants.BUTTON_COLOR_INACTIVE,
       tooltip = "Enable/disable arpeggiator for this row",
-      notifier = function() TrackManager.toggle_arp_enabled(row_index) end
+      notifier = function()
+        TrackManager.toggle_arp_enabled(row_index)
+      end
     },
 
-    -- Chord type popup
+    -- Chord selection dropdown
     vb:popup{
-      id      = "chord_popup_" .. tostring(row_index),
-      width   = cl,
-      height  = cs,
-      items   = MusicTheory.get_available_chords(),
-      value   = 1,
-      active  = false,
+      id = "chord_popup_" .. tostring(row_index),
+      width = Constants.cellSizeLg,
+      height = Constants.cellSize,
+      items = chord_items,
+      value = index_of(chord_items, data.chord_type),
+      active = data.is_chord_track or false,
       tooltip = "Select chord type (enable C button first)",
       notifier = function(index)
         local chord_items = vb.views["chord_popup_" .. tostring(row_index)].items
         local chord_type = chord_items[index]
-        data.chord_type = chord_type
+        State.sequencer_data[row_index].chord_type = chord_type
 
-        if data.is_chord_track then
+        if State.sequencer_data[row_index].is_chord_track then
           local song = renoise.song()
-          local track_index = TrackManager.get_track_index_for_row(row_index)
+          local track_index = State:get_track_index_for_row(row_index)
+
           if track_index <= #song.tracks then
             local track = song.tracks[track_index]
             if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
-              local intervals = C.CHORD_TYPES[chord_type]
-              if intervals and #intervals > 0 then
-                track.visible_note_columns = math.max(1, math.min(12, #intervals))
+              local chord_intervals = Constants.CHORD_TYPES[chord_type]
+              if chord_intervals and #chord_intervals > 0 then
+                local num_notes = #chord_intervals
+                track.visible_note_columns = math.max(1, math.min(12, num_notes))
+                print("Updated track " .. track_index .. " to " .. num_notes .. " note columns for " .. chord_type .. " chord")
               else
                 track.visible_note_columns = 1
               end
+
               for s = 1, State.num_steps do
-                if data.step_states and data.step_states[s] then
-                  if data.step_states[s] == 1 then
-                    local note = data.step_notes and data.step_notes[s] or data.note_value
-                    PatternWriter.update_step_note_in_pattern(row_index, s, note)
-                  elseif data.step_states[s] == 2 then
-                    PatternWriter.update_note_in_pattern(row_index, s, false)
-                    PatternWriter.update_step_volume_in_pattern(row_index, s, 0)
+                if State.sequencer_data[row_index].step_states and State.sequencer_data[row_index].step_states[s] then
+                  local step_state = State.sequencer_data[row_index].step_states[s]
+                  if step_state == 1 then
+                    local note_to_use = State.sequencer_data[row_index].step_notes and State.sequencer_data[row_index].step_notes[s] or State.sequencer_data[row_index].note_value
+                    PatternWriter.update_step_note_in_pattern(row_index, s, note_to_use)
                   end
                 end
               end
+              print("Updated all active steps with " .. chord_type .. " chord")
             end
           end
         end
+
         print("Selected chord " .. chord_type .. " for row " .. row_index)
       end
     },
 
     -- Arp mode popup
     vb:popup{
-      id      = "arp_mode_popup_" .. tostring(row_index),
-      width   = cl,
-      height  = cs,
-      items   = C.ARP_MODES,
-      value   = 1,
-      active  = false,
+      id = "arp_mode_popup_" .. tostring(row_index),
+      width = Constants.cellSizeLg,
+      height = Constants.cellSize,
+      items = Constants.ARP_MODES,
+      value = index_of(Constants.ARP_MODES, data.arp_mode),
+      active = data.arp_enabled or false,
       tooltip = "Select arp mode (enable A button first)",
       notifier = function(index)
-        TrackManager.set_arp_mode(row_index, C.ARP_MODES[index])
+        TrackManager.set_arp_mode(row_index, Constants.ARP_MODES[index])
       end
     },
 
     -- Track Note rotary
     vb:rotary{
-      id      = "note_rotary_" .. tostring(row_index),
-      min     = 0,
-      max     = 100,
-      value   = 50,
-      width   = cs,
-      height  = cs,
+      id = "note_rotary_" .. tostring(row_index),
+      min = 0,
+      max = 100,
+      value = 50,
+      width = Constants.cellSize,
+      height = Constants.cellSize,
       tooltip = "Track Note (base pitch for all steps)",
       notifier = function(value)
-        local base = data.base_note_value
-        local new_note = MusicTheory.percentage_to_note(value, base, State.global_octave_range, State.global_scale_mode, State.global_scale_key)
+        local track_rotary_id = "note_rotary_" .. tostring(row_index)
+        if State.updating_rotary[track_rotary_id] then return end
 
-        local constrained_pct = MusicTheory.note_to_percentage(new_note, base, State.global_octave_range)
-        if math.abs(constrained_pct - value) > 0.1 then
-          local ctl = vb.views["note_rotary_" .. tostring(row_index)]
-          if ctl then ctl.value = constrained_pct end
+        local base_note_value = State.sequencer_data[row_index].base_note_value
+        local new_note_value = MusicTheory.percentage_to_note(value, base_note_value, State.global_octave_range, State.global_scale_mode, State.global_scale_key)
+
+        local constrained_percentage = MusicTheory.note_to_percentage(new_note_value, base_note_value, State.global_octave_range)
+        if math.abs(constrained_percentage - value) > 0.1 then
+          set_rotary_value_safely(track_rotary_id, constrained_percentage)
         end
 
-        local old_note = data.note_value or base
-        local transposition = new_note - old_note
-        data.note_value = new_note
+        local old_track_note = State.sequencer_data[row_index].note_value or base_note_value
+        local transposition = new_note_value - old_track_note
 
-        -- Transpose per-step notes
-        if data.step_notes then
-          local min_n, max_n = MusicTheory.compute_note_range(base, State.global_octave_range)
-          for si, old_sn in pairs(data.step_notes) do
-            local offset = old_sn - old_note
-            local new_sn = MusicTheory.snap_to_scale(new_note + offset, min_n, max_n, State.global_scale_mode, State.global_scale_key)
-            data.step_notes[si] = new_sn
+        State.sequencer_data[row_index].note_value = new_note_value
 
-            local sr_id = "step_note_rotary_" .. tostring(row_index) .. "_" .. tostring(si)
-            if vb.views[sr_id] then
-              vb.views[sr_id].value = MusicTheory.note_to_percentage(new_sn, base, State.global_octave_range)
+        if State.sequencer_data[row_index].step_notes then
+          local min_note, max_note = MusicTheory.compute_note_range(base_note_value, State.global_octave_range)
+          for step_index, old_step_note in pairs(State.sequencer_data[row_index].step_notes) do
+            local step_offset = old_step_note - old_track_note
+            local new_step_note = new_note_value + step_offset
+
+            new_step_note = MusicTheory.snap_to_scale(new_step_note, min_note, max_note, State.global_scale_mode, State.global_scale_key)
+
+            State.sequencer_data[row_index].step_notes[step_index] = new_step_note
+
+            local step_rotary_id = "step_note_rotary_" .. tostring(row_index) .. "_" .. tostring(step_index)
+            if vb.views[step_rotary_id] then
+              vb.views[step_rotary_id].value = MusicTheory.note_to_percentage(new_step_note, base_note_value, State.global_octave_range)
             end
-            local btn_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(si)
-            if vb.views[btn_id] and data.step_states[si] == 1 then
-              vb.views[btn_id].text = MusicTheory.note_value_to_string(new_sn)
+
+            local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(step_index)
+            if vb.views[button_id] and State.sequencer_data[row_index].step_states[step_index] == 1 then
+              vb.views[button_id].text = MusicTheory.note_value_to_string(new_step_note)
+              vb.views[button_id].width = Constants.cellSize
             end
+
+            print("Step " .. step_index .. ": old_step=" .. old_step_note .. ", offset=" .. step_offset .. ", new_step=" .. new_step_note)
           end
         end
 
-        -- Update pattern
         if not State.is_syncing_pattern then
           for s = 1, State.num_steps do
-            if data.step_states and data.step_states[s] then
-              if data.step_states[s] == 1 then
-                local note_to_use = data.step_notes and data.step_notes[s] or new_note
-                if not (data.step_notes and data.step_notes[s]) then
-                  local btn_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
-                  if vb.views[btn_id] then
-                    vb.views[btn_id].text = MusicTheory.note_value_to_string(new_note)
+            if State.sequencer_data[row_index].step_states and State.sequencer_data[row_index].step_states[s] then
+              local step_state = State.sequencer_data[row_index].step_states[s]
+
+              if step_state == 1 then
+                local note_to_use
+                if State.sequencer_data[row_index].step_notes and State.sequencer_data[row_index].step_notes[s] then
+                  note_to_use = State.sequencer_data[row_index].step_notes[s]
+                else
+                  note_to_use = new_note_value
+                  local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
+                  if vb.views[button_id] then
+                    vb.views[button_id].text = MusicTheory.note_value_to_string(new_note_value)
+                    vb.views[button_id].width = Constants.cellSize
                   end
                 end
                 PatternWriter.update_step_note_in_pattern(row_index, s, note_to_use)
-              elseif data.step_states[s] == 2 then
+              elseif step_state == 2 then
                 PatternWriter.update_note_in_pattern(row_index, s, false)
                 PatternWriter.update_step_volume_in_pattern(row_index, s, 0)
               end
@@ -290,46 +298,68 @@ function UIBuilder.create_step_row(row_index, steps)
           end
         end
 
-        print("Updated track " .. row_index .. " note from " .. old_note .. " to " .. new_note .. " (transposition: " .. transposition .. ")")
+        SubRows.refresh_indicators(row_index)
+        print("Updated track " .. row_index .. " note from " .. old_track_note .. " to " .. new_note_value .. " (transposition: " .. transposition .. " semitones)")
       end
     },
 
     -- Track Delay rotary
     vb:rotary{
-      id      = "track_delay_rotary_" .. tostring(row_index),
-      min     = -100,
-      max     = 100,
-      value   = 0,
-      width   = cs,
-      height  = cs,
+      id = "track_delay_rotary_" .. tostring(row_index),
+      min = -100,
+      max = 100,
+      value = (function()
+        local song = renoise.song()
+        local ti = State:get_track_index_for_row(row_index)
+        if ti and ti <= #song.tracks then
+          return math.max(-100, math.min(100, song.tracks[ti].output_delay))
+        end
+        return 0
+      end)(),
+      width = Constants.cellSize,
+      height = Constants.cellSize,
       tooltip = "Track Delay (-100ms to +100ms)",
       notifier = function(value)
-        local track_index = TrackManager.get_track_index_for_row(row_index)
+        local track_index = State:get_track_index_for_row(row_index)
         local song = renoise.song()
         if track_index <= #song.tracks then
           song.tracks[track_index].output_delay = value
           print("Set track delay to " .. value .. " for track " .. track_index)
+        else
+          print("ERROR: Track " .. track_index .. " doesn't exist")
         end
       end
     },
 
     -- Track Volume rotary
     vb:rotary{
-      id      = "track_volume_rotary_" .. tostring(row_index),
-      min     = 0,
-      max     = 100,
-      value   = 100,
-      width   = cs,
-      height  = cs,
+      id = "track_volume_rotary_" .. tostring(row_index),
+      min = 0,
+      max = 100,
+      value = (function()
+        local song = renoise.song()
+        local ti = State:get_track_index_for_row(row_index)
+        if ti and ti <= #song.tracks and song.tracks[ti].type == renoise.Track.TRACK_TYPE_SEQUENCER then
+          return math.max(0, math.min(100, song.tracks[ti].prefx_volume.value * 100))
+        end
+        return 100
+      end)(),
+      width = Constants.cellSize,
+      height = Constants.cellSize,
       tooltip = "Track Volume (master volume for all steps in this row)",
       notifier = function(value)
-        data.track_volume = value
+        if not State.sequencer_data[row_index].track_volume then
+          State.sequencer_data[row_index].track_volume = 100
+        end
+        State.sequencer_data[row_index].track_volume = value
+
         local song = renoise.song()
-        local track_index = TrackManager.get_track_index_for_row(row_index)
+        local track_index = State:get_track_index_for_row(row_index)
         if track_index <= #song.tracks then
           local track = song.tracks[track_index]
           if track.type == renoise.Track.TRACK_TYPE_SEQUENCER then
             track.prefx_volume.value = value / 100
+            print("Set track " .. track_index .. " volume to " .. (value / 100))
           end
         end
       end
@@ -337,329 +367,438 @@ function UIBuilder.create_step_row(row_index, steps)
 
     -- Visibility toggle buttons
     vb:button{
-      id       = "note_toggle_" .. tostring(row_index),
-      text     = "N",
-      width    = cs,
-      height   = cs,
-      color    = C.BUTTON_COLOR_INACTIVE,
-      tooltip  = "Toggle note row visibility",
-      notifier = function() TrackManager.toggle_note_row_visibility(row_index) end
+      id = "note_toggle_" .. tostring(row_index),
+      text = "N",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = Constants.BUTTON_COLOR_INACTIVE,
+      tooltip = "Toggle note row visibility",
+      notifier = function()
+        TrackManager.toggle_note_row_visibility(row_index)
+      end
     },
+
     vb:button{
-      id       = "volume_toggle_" .. tostring(row_index),
-      text     = "V",
-      width    = cs,
-      height   = cs,
-      color    = C.BUTTON_COLOR_INACTIVE,
-      tooltip  = "Toggle volume row visibility",
-      notifier = function() TrackManager.toggle_volume_row_visibility(row_index) end
+      id = "volume_toggle_" .. tostring(row_index),
+      text = "V",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = Constants.BUTTON_COLOR_INACTIVE,
+      tooltip = "Toggle volume row visibility",
+      notifier = function()
+        TrackManager.toggle_volume_row_visibility(row_index)
+      end
     },
+
     vb:button{
-      id       = "delay_toggle_" .. tostring(row_index),
-      text     = "D",
-      width    = cs,
-      height   = cs,
-      color    = C.BUTTON_COLOR_INACTIVE,
-      tooltip  = "Toggle delay row visibility",
-      notifier = function() TrackManager.toggle_delay_row_visibility(row_index) end
+      id = "delay_toggle_" .. tostring(row_index),
+      text = "D",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = Constants.BUTTON_COLOR_INACTIVE,
+      tooltip = "Toggle delay row visibility",
+      notifier = function()
+        TrackManager.toggle_delay_row_visibility(row_index)
+      end
     },
+
     vb:button{
-      id       = "piano_roll_toggle_" .. tostring(row_index),
-      text     = "P",
-      width    = cs,
-      height   = cs,
-      color    = C.BUTTON_COLOR_INACTIVE,
-      tooltip  = "Toggle piano roll visibility",
-      notifier = function() TrackManager.toggle_piano_roll_visibility(row_index) end
+      id = "piano_roll_toggle_" .. tostring(row_index),
+      text = "P",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = Constants.BUTTON_COLOR_INACTIVE,
+      tooltip = "Toggle piano roll visibility",
+      notifier = function()
+        TrackManager.toggle_piano_roll_visibility(row_index)
+      end
     },
+
+    vb:button{
+      id = "repeat_toggle_" .. tostring(row_index),
+      text = "R",
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      color = Constants.BUTTON_COLOR_INACTIVE,
+      tooltip = "Toggle note repeat row (R0y retrigger effects)",
+      notifier = function()
+        TrackManager.toggle_repeat_visibility(row_index)
+      end
+    },
+  }
+
+  local row = vb:row{
+    spacing = Constants.control_spacing,
+    SubRows.fixed_left(controls),
   }
 
   -- Register MIDI mappings for track controls
   MidiMappings.register_track_mappings(row_index)
 
-  -- 3-state step buttons
+  -- Add 3-state step buttons
   for s = 1, actual_steps do
     local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
 
-    if not data.step_states then data.step_states = {} end
-    if not data.step_states[s] then data.step_states[s] = 0 end
+    if not State.sequencer_data[row_index].step_states then
+      State.sequencer_data[row_index].step_states = {}
+    end
+    if State.sequencer_data[row_index].step_states[s] == nil then
+      State.sequencer_data[row_index].step_states[s] = 0
+    end
 
-    local init_text, init_color = get_button_appearance(data.step_states[s])
+    local step_state = State.sequencer_data[row_index].step_states[s]
+    local initial_text, initial_color = StepState.get_button_appearance(step_state, s)
+    if step_state == 1 then
+      local row_data = State.sequencer_data[row_index]
+      local note = row_data.step_notes and row_data.step_notes[s] or row_data.note_value or row_data.base_note_value or 48
+      initial_text = MusicTheory.note_value_to_string(note)
+    end
 
     row:add_child(vb:button{
-      id       = button_id,
-      text     = init_text,
-      color    = init_color,
-      width    = cs,
-      height   = cs,
-      font     = "mono",
+      id = button_id,
+      text = initial_text,
+      color = initial_color,
+      width = Constants.cellSize,
+      height = Constants.cellSize,
       notifier = function()
-        -- Arp mode: toggle trigger note
-        if data.arp_enabled then
-          if not data.arp_trigger_notes then data.arp_trigger_notes = {} end
-          if not data.step_notes then data.step_notes = {} end
-          if data.arp_trigger_notes[s] then
-            data.arp_trigger_notes[s] = nil
-            data.step_states[s] = 0
-            data.step_notes[s]  = nil
-            PatternWriter.clear_step_from_pattern(row_index, s)
-            if vb.views[button_id] then
-              vb.views[button_id].text  = "   "
-              vb.views[button_id].color = C.BUTTON_COLOR_OFF
-            end
-          else
-            local pitch = (data.step_notes[s]) or data.note_value or data.base_note_value or 48
-            data.arp_trigger_notes[s] = pitch
-            data.step_states[s] = 1
-            data.step_notes[s]  = pitch
-            if vb.views[button_id] then
-              vb.views[button_id].text  = MusicTheory.note_value_to_string(pitch)
-              vb.views[button_id].color = C.PIANO_ROLL_TRIGGER_COLOR
-            end
-          end
-          local Arp = require("arpeggiator")
-          Arp.apply_to_row(row_index)
-          return
-        end
-
-        -- Normal mode: cycle 0→1→2→0
-        local cur = data.step_states[s]
-        local nxt = (cur + 1) % 3
-        data.step_states[s] = nxt
-
-        local txt, col = get_button_appearance(nxt)
-        if vb.views[button_id] then
-          vb.views[button_id].text  = txt
-          vb.views[button_id].color = col
-        end
-
-        if nxt == 0 then
-          PatternWriter.update_note_in_pattern(row_index, s, false)
-        elseif nxt == 1 then
-          local note = data.step_notes and data.step_notes[s] or data.note_value
-          PatternWriter.update_step_note_in_pattern(row_index, s, note)
-        elseif nxt == 2 then
-          PatternWriter.update_note_in_pattern(row_index, s, false)
-          PatternWriter.update_step_volume_in_pattern(row_index, s, 0)
-        end
+        StepState.toggle_step_playing(row_index, s)
       end
     })
   end
 
-  -- Action buttons after steps
+  -- Mute button
+  local mute_button_id = "mute_button_" .. tostring(row_index)
   row:add_child(vb:button{
-    id       = "mute_button_" .. tostring(row_index),
-    text     = "M",
-    width    = cs,
-    height   = cs,
-    tooltip  = "Mute/unmute track",
-    notifier = function() TrackManager.toggle_track_mute(row_index) end
+    id = mute_button_id,
+    text = "M",
+    width = Constants.cellSize,
+    height = Constants.cellSize,
+    tooltip = "Mute/unmute track",
+    notifier = function()
+      TrackManager.toggle_track_mute(row_index)
+    end
   })
   TrackManager.update_mute_button_color(row_index)
 
+  -- Save as phrase button
   row:add_child(vb:button{
-    text     = "S",
-    width    = cs,
-    height   = cs,
-    color    = C.BUTTON_COLOR_DARK,
-    tooltip  = "Save row as phrase",
-    notifier = function() TrackManager.save_row_as_phrase(row_index) end
+    text = "S",
+    width = Constants.cellSize,
+    height = Constants.cellSize,
+    color = {30, 30, 30},
+    tooltip = "Save row as phrase",
+    notifier = function()
+      TrackManager.save_row_as_phrase(row_index)
+    end
   })
 
+  -- Clear row button
   row:add_child(vb:button{
-    text     = "↩",
-    font     = "bold",
-    width    = cs,
-    height   = cs,
-    color    = C.BUTTON_COLOR_DARK,
-    tooltip  = "Clear pattern notes and reset row",
-    notifier = function() TrackManager.remove_sequencer_row(row_index) end
+    text = "↩",
+    width = Constants.cellSize,
+    height = Constants.cellSize,
+    color = {30, 30, 30},
+    tooltip = "Clear pattern notes and reset row",
+    notifier = function()
+      TrackManager.remove_sequencer_row(row_index)
+    end
   })
 
+  -- Delete row and track button
   row:add_child(vb:button{
-    text     = "x",
-    width    = cs,
-    height   = cs,
-    color    = C.BUTTON_COLOR_STOP,
-    tooltip  = "Delete row AND remove track from Renoise",
-    notifier = function() TrackManager.remove_sequencer_row_and_track(row_index) end
+    text = "x",
+    width = Constants.cellSize,
+    height = Constants.cellSize,
+    color = {245, 66, 93},
+    tooltip = "Delete row AND remove track from Renoise",
+    notifier = function()
+      TrackManager.remove_sequencer_row_and_track(row_index)
+    end
   })
 
   return row
 end
 
----------------------------------------------------------------
--- Note row (per-step note rotaries)
----------------------------------------------------------------
-
+-- Create a note row with rotary dials for each step
 function UIBuilder.create_note_row(row_index, steps)
   local vb = State.vb
   local actual_steps = math.min(steps, State.num_steps)
-  local data = State.sequencer_data[row_index]
+  local note_row = vb:row{
+    spacing = Constants.control_spacing,
+    create_labels_row(row_index, "note", "Note")
+  }
 
   if not State.track_visibility[row_index] then
     State.track_visibility[row_index] = State.create_default_visibility()
   end
-
-  local note_row = vb:row{
-    spacing = C.CONTROL_SPACING + 6,
-    create_labels_row()
-  }
 
   for s = 1, actual_steps do
     local rotary_id = "step_note_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    note_row:add_child(vb:rotary{
-      id    = rotary_id,
-      min   = 0,
-      max   = 100,
-      value = 50,
-      width = cs,
-      height = cs,
-      notifier = function(value)
-        local base = data.base_note_value or 48
-        local note_val = MusicTheory.percentage_to_note(value, base, State.global_octave_range, State.global_scale_mode, State.global_scale_key)
+    note_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      vb:rotary{
+        id = rotary_id,
+        min = 0,
+        max = 100,
+        value = (function()
+          local d = State.sequencer_data[row_index]
+          local n = (d.step_notes and d.step_notes[s]) or d.note_value or d.base_note_value or 48
+          return MusicTheory.note_to_percentage(n, d.base_note_value or 48, State.global_octave_range)
+        end)(),
+        width = Constants.cellSize,
+        height = Constants.cellSize,
+        notifier = function(value)
+          if State.updating_rotary[rotary_id] then return end
 
-        if not data.step_notes then data.step_notes = {} end
-        data.step_notes[s] = note_val
+          local base_note_value = State.sequencer_data[row_index].base_note_value or 48
+          local note_value = MusicTheory.percentage_to_note(value, base_note_value, State.global_octave_range, State.global_scale_mode, State.global_scale_key)
 
-        local cpct = MusicTheory.note_to_percentage(note_val, base, State.global_octave_range)
-        if math.abs(cpct - value) > 0.1 then
-          vb.views[rotary_id].value = cpct
-        end
-
-        local ss = data.step_states and data.step_states[s]
-        if not State.is_syncing_pattern and ss and ss > 0 then
-          PatternWriter.update_step_note_in_pattern(row_index, s, note_val)
-          if ss == 1 then
-            local btn_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
-            if vb.views[btn_id] then
-              vb.views[btn_id].text = MusicTheory.note_value_to_string(note_val)
-            end
+          if not State.sequencer_data[row_index].step_notes then
+            State.sequencer_data[row_index].step_notes = {}
           end
-        end
-        print("Set step " .. s .. " note to " .. note_val .. " for row " .. row_index)
-      end
-    })
-    MidiMappings.register_step_note_mapping(row_index, s)
-  end
+          State.sequencer_data[row_index].step_notes[s] = note_value
 
-  local wrapper = vb:column{ spacing = 1, note_row }
+          local constrained_percentage = MusicTheory.note_to_percentage(note_value, base_note_value, State.global_octave_range)
+          if math.abs(constrained_percentage - value) > 0.1 then
+            set_rotary_value_safely(rotary_id, constrained_percentage)
+          end
+
+          local button_id = "step_button_" .. tostring(row_index) .. "_" .. tostring(s)
+          local step_state = 0
+          if State.sequencer_data[row_index] and State.sequencer_data[row_index].step_states then
+            step_state = State.sequencer_data[row_index].step_states[s] or 0
+          end
+
+          if step_state == 1 and vb.views[button_id] then
+            vb.views[button_id].text = MusicTheory.note_value_to_string(note_value)
+            vb.views[button_id].width = Constants.cellSize
+            print("Updated button " .. button_id .. " text to " .. MusicTheory.note_value_to_string(note_value))
+          end
+
+          if not State.is_syncing_pattern and step_state == 1 then
+            PatternWriter.update_step_note_in_pattern(row_index, s, note_value)
+          end
+
+          -- Keep linked piano roll view + indicators in sync
+          PianoRoll.update_display(row_index)
+          SubRows.refresh_indicators(row_index)
+
+          print("Set step " .. s .. " note to " .. note_value .. " for row " .. row_index)
+        end
+      },
+    })
+
+    MidiMappings.register_step_note_mapping(row_index, s, rotary_id)
+  end
+  SubRows.add_right_area(note_row, row_index, "note")
+
+  local wrapper = vb:column{
+    spacing = 1,
+    note_row
+  }
+
   State.track_note_rows[row_index] = wrapper
   wrapper.visible = State.track_visibility[row_index].note_visible
+
   return wrapper
 end
 
----------------------------------------------------------------
--- Volume row (per-step volume rotaries)
----------------------------------------------------------------
-
+-- Create a volume row with rotary dials for each step
 function UIBuilder.create_volume_row(row_index, steps)
   local vb = State.vb
   local actual_steps = math.min(steps, State.num_steps)
-  local data = State.sequencer_data[row_index]
+  local volume_row = vb:row{
+    spacing = Constants.control_spacing,
+    create_labels_row(row_index, "volume", "Volume")
+  }
 
   if not State.track_visibility[row_index] then
     State.track_visibility[row_index] = State.create_default_visibility()
   end
-
-  local vol_row = vb:row{
-    spacing = C.CONTROL_SPACING + 6,
-    create_labels_row()
-  }
 
   for s = 1, actual_steps do
     local rotary_id = "step_volume_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    vol_row:add_child(vb:rotary{
-      id     = rotary_id,
-      min    = 0,
-      max    = 100,
-      value  = 100,
-      width  = cs,
-      height = cs,
-      notifier = function(value)
-        local vol = math.floor((value / 100) * 127)
-        if not data.step_volumes then data.step_volumes = {} end
-        data.step_volumes[s] = vol
+    volume_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      vb:rotary{
+        id = rotary_id,
+        min = 0,
+        max = 100,
+        value = (function()
+          local v = State.sequencer_data[row_index].step_volumes and State.sequencer_data[row_index].step_volumes[s]
+          if v then return math.max(0, math.min(100, (v / 127) * 100)) end
+          return 100
+        end)(),
+        width = Constants.cellSize,
+        height = Constants.cellSize,
+        notifier = function(value)
+          if State.updating_rotary[rotary_id] then return end
+          local volume_value = math.floor((value / 100) * 127)
 
-        local ss = data.step_states and data.step_states[s]
-        if not State.is_syncing_pattern and ss and ss > 0 then
-          PatternWriter.update_step_volume_in_pattern(row_index, s, vol)
+          if not State.sequencer_data[row_index].step_volumes then
+            State.sequencer_data[row_index].step_volumes = {}
+          end
+          State.sequencer_data[row_index].step_volumes[s] = volume_value
+
+          local step_state = State.sequencer_data[row_index].step_states and State.sequencer_data[row_index].step_states[s]
+          if not State.is_syncing_pattern and step_state == 1 then
+            PatternWriter.update_step_volume_in_pattern(row_index, s, volume_value)
+          end
+
+          SubRows.refresh_indicators(row_index)
+          print("Set step " .. s .. " volume to " .. volume_value .. " for row " .. row_index)
         end
-        print("Set step " .. s .. " volume to " .. vol .. " for row " .. row_index)
-      end
+      },
     })
-    MidiMappings.register_step_volume_mapping(row_index, s)
-  end
 
-  local wrapper = vb:column{ spacing = 1, vol_row }
+    MidiMappings.register_step_volume_mapping(row_index, s, rotary_id)
+  end
+  SubRows.add_right_area(volume_row, row_index, "volume")
+
+  local wrapper = vb:column{
+    spacing = 1,
+    volume_row
+  }
+
   State.track_volume_rows[row_index] = wrapper
   wrapper.visible = State.track_visibility[row_index].volume_visible
+
   return wrapper
 end
 
----------------------------------------------------------------
--- Delay row (per-step delay rotaries)
----------------------------------------------------------------
-
+-- Create a delay row with rotary dials for each step
 function UIBuilder.create_delay_row(row_index, steps)
   local vb = State.vb
   local actual_steps = math.min(steps, State.num_steps)
-  local data = State.sequencer_data[row_index]
+  local delay_row = vb:row{
+    spacing = Constants.control_spacing,
+    create_labels_row(row_index, "delay", "Delay")
+  }
 
   if not State.track_visibility[row_index] then
     State.track_visibility[row_index] = State.create_default_visibility()
   end
 
-  local delay_row = vb:row{
-    spacing = C.CONTROL_SPACING + 6,
-    create_labels_row()
-  }
-
   for s = 1, actual_steps do
     local rotary_id = "step_delay_rotary_" .. tostring(row_index) .. "_" .. tostring(s)
-    delay_row:add_child(vb:rotary{
-      id     = rotary_id,
-      min    = 0,
-      max    = 255,
-      value  = 0,
-      width  = cs,
-      height = cs,
-      notifier = function(value)
-        if not data.step_delays then data.step_delays = {} end
-        data.step_delays[s] = math.floor(value)
+    delay_row:add_child(vb:row{
+      margin = 0,
+      spacing = 0,
+      vb:rotary{
+        id = rotary_id,
+        min = 0,
+        max = 255,
+        value = (State.sequencer_data[row_index].step_delays and State.sequencer_data[row_index].step_delays[s]) or 0,
+        width = Constants.cellSize,
+        height = Constants.cellSize,
+        notifier = function(value)
+          if State.updating_rotary[rotary_id] then return end
+          if not State.sequencer_data[row_index].step_delays then
+            State.sequencer_data[row_index].step_delays = {}
+          end
+          State.sequencer_data[row_index].step_delays[s] = math.floor(value)
 
-        local ss = data.step_states and data.step_states[s]
-        if not State.is_syncing_pattern and ss and ss > 0 then
-          PatternWriter.update_step_delay_in_pattern(row_index, s, math.floor(value))
+          local step_state = State.sequencer_data[row_index].step_states and State.sequencer_data[row_index].step_states[s]
+          if not State.is_syncing_pattern and step_state == 1 then
+            PatternWriter.update_step_delay_in_pattern(row_index, s, math.floor(value))
+          end
+
+          SubRows.refresh_indicators(row_index)
+          print("Set step " .. s .. " delay to " .. math.floor(value) .. " for row " .. row_index)
         end
-        print("Set step " .. s .. " delay to " .. math.floor(value) .. " for row " .. row_index)
-      end
+      },
     })
-    MidiMappings.register_step_delay_mapping(row_index, s)
-  end
 
-  local wrapper = vb:column{ spacing = 1, delay_row }
+    MidiMappings.register_step_delay_mapping(row_index, s, rotary_id)
+  end
+  SubRows.add_right_area(delay_row, row_index, "delay")
+
+  local wrapper = vb:column{
+    spacing = 1,
+    delay_row
+  }
+
   State.track_delay_rows[row_index] = wrapper
   wrapper.visible = State.track_visibility[row_index].delay_visible
+
   return wrapper
 end
 
----------------------------------------------------------------
--- Styled row group (combines step + note + volume + delay rows)
----------------------------------------------------------------
+-- Create the note repeat row: speed selector + per-step repeat toggles
+function UIBuilder.create_repeat_row(row_index, steps)
+  local vb = State.vb
+  local data = State.sequencer_data[row_index]
+  if not data.step_repeats then data.step_repeats = {} end
+  local actual_steps = math.min(steps, State.num_steps)
 
+  local repeat_row = vb:row{
+    spacing = Constants.control_spacing,
+    SubRows.create_left_area({
+      [Constants.SLOT_INSTRUMENT] = SubRows.slot_label("Repeat "),
+      [Constants.SLOT_CHORD_POPUP] = vb:popup{
+        id = "repeat_speed_" .. tostring(row_index),
+        items = Constants.REPEAT_SPEED_OPTIONS,
+        value = math.max(1, math.min(15, data.repeat_speed or Constants.REPEAT_DEFAULT_SPEED)),
+        width = Constants.cellSizeLg,
+        height = Constants.cellSize,
+        tooltip = "Retrigger speed: R0y = retrigger every y ticks (lower = faster)",
+        notifier = function(index)
+          TrackManager.set_repeat_speed(row_index, index)
+        end
+      },
+    })
+  }
+
+  for s = 1, actual_steps do
+    local on = data.step_repeats[s]
+    repeat_row:add_child(vb:button{
+      id = "repeat_step_" .. tostring(row_index) .. "_" .. tostring(s),
+      text = on and "R" or "--",
+      color = on and Constants.REPEAT_STEP_COLOR or Constants.BUTTON_COLOR_INACTIVE,
+      width = Constants.cellSize,
+      height = Constants.cellSize,
+      notifier = function()
+        TrackManager.toggle_repeat_step(row_index, s)
+      end
+    })
+  end
+  SubRows.add_right_area(repeat_row, row_index, "rep")
+
+  local wrapper = vb:column{ spacing = 1, repeat_row }
+  State.track_repeat_rows[row_index] = wrapper
+  if not State.track_visibility[row_index] then
+    State.track_visibility[row_index] = State.create_default_visibility()
+  end
+  wrapper.visible = State.track_visibility[row_index].repeat_visible or false
+  return wrapper
+end
+
+-- Wrap a complete sequencer row group with styled container
 function UIBuilder.create_styled_row_group(row_index, steps)
   local vb = State.vb
+  local step_row       = UIBuilder.create_step_row(row_index, steps)
+  local note_row       = UIBuilder.create_note_row(row_index, steps)
+  local volume_row     = UIBuilder.create_volume_row(row_index, steps)
+  local delay_row      = UIBuilder.create_delay_row(row_index, steps)
+  local repeat_row     = UIBuilder.create_repeat_row(row_index, steps)
+  local piano_roll_row = PianoRoll.create_piano_roll_row(row_index, steps)
+
   local row_group = vb:column{
-    UIBuilder.create_step_row(row_index, steps),
-    UIBuilder.create_note_row(row_index, steps),
-    UIBuilder.create_volume_row(row_index, steps),
-    UIBuilder.create_delay_row(row_index, steps),
-    PianoRoll.create_piano_roll_row(row_index, steps),
+    step_row,
+    note_row,
+    volume_row,
+    delay_row,
+    repeat_row,
+    piano_roll_row,
   }
+
+  SubRows.refresh_indicators(row_index)
+
   return vb:row{
-    margin     = C.ROW_PADDING,
-    background = "group",
+    margin = Constants.ROW_PADDING,
+    style = "group",
     row_group
   }
 end

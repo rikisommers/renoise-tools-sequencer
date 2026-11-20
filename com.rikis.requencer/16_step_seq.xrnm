@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MidiActionMappingSet doc_version="0">
+  <ActionMappings>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 2 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>2</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 3 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>3</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 4 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>4</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 5 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>5</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 6 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>6</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 7 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>7</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 8 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>8</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 1 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>1</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 9 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>81</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 10 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>82</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 11 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>83</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 12 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>84</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 13 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>85</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 14 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>86</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 15 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>87</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+    <ActionMapping>
+      <Action>Step Sequencer: Row 1 Step 16 Note</Action>
+      <MidiMappings>
+        <MidiMapping>
+          <MappingMode>Controllers</MappingMode>
+          <ControllerMode>Absolute 7 bit</ControllerMode>
+          <NoteMode>Trigger</NoteMode>
+          <Channel>0</Channel>
+          <CCNumberOrNote>88</CCNumberOrNote>
+          <Min>0.0</Min>
+          <Max>1.0</Max>
+        </MidiMapping>
+      </MidiMappings>
+    </ActionMapping>
+  </ActionMappings>
+</MidiActionMappingSet>
